@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "44868715419",
+    "project_id": "academia-mma",
+    "storage_bucket": "academia-mma.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:44868715419:android:fe9e1293867cb1e3ce973e",
+        "android_client_info": {
+          "package_name": "com.example.academia_mma"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBOswHcfMkGZqQd8iF73jae4keAtEt6QfQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
