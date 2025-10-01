@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/firestore_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/pdf_service.dart';
 
 class AddAlumnoScreen extends StatefulWidget {
   const AddAlumnoScreen({super.key});
@@ -14,6 +15,10 @@ class _AddAlumnoScreenState extends State<AddAlumnoScreen> {
   final _nombreCtrl = TextEditingController();
   final _celCtrl = TextEditingController();
   final _montoCtrl = TextEditingController();
+  final _apellidoCtrl = TextEditingController();
+final _dniCtrl = TextEditingController();
+final _correoCtrl = TextEditingController();
+
 
   String curso = 'MMA';
   String turno = 'Mañana';
@@ -54,7 +59,7 @@ class _AddAlumnoScreenState extends State<AddAlumnoScreen> {
                 ),
                 DropdownButtonFormField<String>(
                   value: curso,
-                  items: ["MMA", "Box", "Sanda", "Jiu Jitsu", "Muay Thai"]
+                  items: ["MMA", "Box", "Sanda", "Jiu Jitsu", "Muay Thai","Gym"]
                       .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                       .toList(),
                   onChanged: (v) => setState(() => curso = v!),
@@ -103,40 +108,60 @@ class _AddAlumnoScreenState extends State<AddAlumnoScreen> {
                 Text('Fin (automático): ${DateFormat('dd/MM/yyyy').format(fechaFin)}'),
                 const SizedBox(height: 20),
                 ElevatedButton(
-                  child: const Text('Guardar'),
-                  onPressed: () async {
-                    final estado = FirestoreService.calcularEstado(fechaFin);
-                    final data = {
-                      'nombre': _nombreCtrl.text.trim(),
-                      'curso': curso,
-                      'turno': turno,
-                      'plan': plan,
-                      'celular': _celCtrl.text.trim(),
-                      'fecha_inicio': Timestamp.fromDate(fechaInicio),
-                      'fecha_fin': Timestamp.fromDate(fechaFin),
-                      'estado': estado,
-                      'monto_pagado': double.tryParse(_montoCtrl.text) ?? 0,
-                      'promocion': promocion,
-                    };
+  child: const Text('Guardar'),
+  onPressed: () async {
+    final estado = FirestoreService.calcularEstado(fechaFin);
+    final monto = double.tryParse(_montoCtrl.text) ?? 0;
 
-                    await FirestoreService().addAlumno(data);
+    final data = {
+      'nombre': _nombreCtrl.text.trim(),
+      'apellido': _apellidoCtrl.text.trim(),
+      'correo': _correoCtrl.text.trim(),
+      'dni': _dniCtrl.text.trim(),
+      'curso': curso,
+      'turno': turno,
+      'plan': plan,
+      'celular': _celCtrl.text.trim(),
+      'fecha_inicio': Timestamp.fromDate(fechaInicio),
+      'fecha_fin': Timestamp.fromDate(fechaFin),
+      'estado': estado,
+      'monto_pagado': monto,
+      'promocion': promocion,
+    };
 
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Alumno registrado con éxito')),
-                    );
+    // ✅ Guardar en Firestore
+    await FirestoreService().addAlumno(data);
 
-                    _nombreCtrl.clear();
-                    _celCtrl.clear();
-                    _montoCtrl.clear();
-                    setState(() {
-                      curso = 'MMA';
-                      plan = 'Plan Fijo';
-                      turno = 'Mañana';
-                      promocion = 'Ninguna';
-                      fechaInicio = DateTime.now();
-                    });
-                  },
-                )
+    // ✅ Mostrar boleta inmediatamente
+    await PdfService.generarBoleta(
+      context: context,
+      nombre: _nombreCtrl.text.trim(),
+      curso: curso,
+      plan: plan,
+      monto: monto,
+      fecha: DateTime.now(),
+    );
+
+    // ✅ Mensaje de éxito
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Alumno registrado con éxito')),
+    );
+
+    // ✅ Limpiar campos
+    _nombreCtrl.clear();
+    _celCtrl.clear();
+    _montoCtrl.clear();
+    setState(() {
+      curso = 'MMA';
+      plan = 'Plan Fijo';
+      turno = 'Mañana';
+      promocion = 'Ninguna';
+      fechaInicio = DateTime.now();
+    });
+  },
+),
+
+
               ],
             ),
           ),

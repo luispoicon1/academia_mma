@@ -7,6 +7,8 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
 import 'alumno_historial_screen.dart';
 import '../screens/edit_alumno_screen.dart';
+import '../services/pdf_service.dart';
+
 
 class AlumnosListScreen extends StatelessWidget {
   const AlumnosListScreen({super.key});
@@ -74,6 +76,25 @@ class AlumnosListScreen extends StatelessWidget {
                       ),
 
 IconButton(
+  icon: const Icon(Icons.print, color: Colors.black),
+  onPressed: () async { // 🔹 Asegúrate de usar async
+    final monto = (data['monto_pagado'] ?? 0).toDouble();
+    final fechaInicio = (data['fecha_inicio'] as Timestamp).toDate();
+
+    await PdfService.generarBoleta(
+      context: context,
+      nombre: nombre,
+      curso: curso,
+      plan: plan,
+      monto: monto,
+      fecha: fechaInicio,
+    );
+  },
+),
+
+
+
+IconButton(
           icon: const Icon(Icons.history, color: Colors.blue),
           onPressed: () {
     Navigator.push(
@@ -89,21 +110,33 @@ IconButton(
 ),
 
 IconButton(
-  icon: Icon(Icons.delete, color: Colors.red),
+  icon: const Icon(Icons.delete, color: Colors.red),
   onPressed: () async {
-    bool confirm = await showDialog(
+    final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('¿Eliminar alumno?'),
-        content: Text('Se eliminará este alumno y se guardará su perfil eliminado.'),
+        title: const Text('¿Eliminar alumno?'),
+        content: const Text('Se eliminará este alumno permanentemente.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancelar')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Eliminar')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Eliminar')),
         ],
       ),
     );
+
+    if (confirm == true) {
+      await FirebaseFirestore.instance
+          .collection('alumnos')
+          .doc(doc.id)
+          .delete();
+    }
   },
 ),
+
 
 IconButton(
   icon: const Icon(Icons.edit, color: Colors.orange),
