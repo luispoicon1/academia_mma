@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'alumno_historial_screen.dart';
 import '../screens/edit_alumno_screen.dart';
 import '../services/pdf_service.dart';
+import 'perfil_fisico_screen.dart'; // 👈 AGREGAR ESTA LÍNEA
 
 class AlumnosListScreen extends StatelessWidget {
   const AlumnosListScreen({super.key});
@@ -160,6 +161,21 @@ class AlumnosListScreen extends StatelessWidget {
                           );
                         },
                       ),
+
+IconButton(
+  icon: const Icon(Icons.fitness_center, color: Colors.purple),
+  onPressed: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PerfilFisicoScreen(
+          alumnoId: doc.id,
+          nombreAlumno: data['nombre'] ?? '',
+        ),
+      ),
+    );
+  },
+),
 
                       IconButton(
                         icon: const Icon(Icons.info_outline),

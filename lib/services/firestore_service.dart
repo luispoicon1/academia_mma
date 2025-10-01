@@ -109,4 +109,22 @@ class FirestoreService {
 
     return total;
   }
+
+// En FirestoreService
+final CollectionReference perfilesFisicos =
+    FirebaseFirestore.instance.collection('perfiles_fisicos');
+
+// Guardar perfil físico
+Future<void> guardarPerfilFisico(Map<String, dynamic> data) async {
+  await perfilesFisicos.add(data);
+}
+
+// Obtener historial de perfiles físicos de un alumno
+Stream<QuerySnapshot> obtenerEvolucionFisica(String alumnoId) {
+  return perfilesFisicos
+      .where('alumnoId', isEqualTo: alumnoId)
+      .orderBy('fechaRegistro', descending: true)
+      .snapshots();
+}
+
 }
