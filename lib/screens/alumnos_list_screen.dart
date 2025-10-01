@@ -81,6 +81,7 @@ IconButton(
     final monto = (data['monto_pagado'] ?? 0).toDouble();
     final fechaInicio = (data['fecha_inicio'] as Timestamp).toDate();
 
+<<<<<<< HEAD
     // En el IconButton de print, actualiza la llamada:
 await PdfService.generarBoleta(
   context: context,
@@ -102,6 +103,16 @@ await PdfService.generarBoleta(
   monto: monto,
   fecha: fechaInicio,
 );
+=======
+    await PdfService.generarBoleta(
+      context: context,
+      nombre: nombre,
+      curso: curso,
+      plan: plan,
+      monto: monto,
+      fecha: fechaInicio,
+    );
+>>>>>>> c57bfee923dfd2b71ffb2fe65f79c159964dbf4f
   },
 ),
 
@@ -174,6 +185,7 @@ IconButton(
                           // 🔹 Mostrar ventana flotante con todos los datos
                           showDialog(
                             context: context,
+<<<<<<< HEAD
                             // En el IconButton de info_outline, modifica el contenido del AlertDialog:
 builder: (_) => AlertDialog(
   title: Text('$nombre ${data['apellido'] ?? ''}'),
@@ -207,6 +219,34 @@ builder: (_) => AlertDialog(
     ),
   ],
 ),
+=======
+                            builder: (_) => AlertDialog(
+                              title: Text(nombre),
+                              content: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Curso: $curso'),
+                                  Text('Plan: $plan'),
+                                  Text('Turno: $turno'),
+                                  Text('Promoción: $promocion'),
+                                  Text('Monto pagado: S/ $monto'),
+                                  Text('Fecha inicio: ${DateFormat('dd/MM/yyyy').format((data['fecha_inicio'] as Timestamp).toDate())}'),
+                                  Text('Fecha fin: ${DateFormat('dd/MM/yyyy').format(fechaFin)}'),
+                                  Text('Estado: $estado'),
+                                ],
+                              ),
+
+
+                              
+                              actions: [
+                                TextButton(
+                                  child: const Text('Cerrar'),
+                                  onPressed: () => Navigator.pop(context),
+                                ),
+                              ],
+                            ),
+>>>>>>> c57bfee923dfd2b71ffb2fe65f79c159964dbf4f
                           );
                         },
                       )

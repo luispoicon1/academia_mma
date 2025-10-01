@@ -7,7 +7,11 @@ class FirestoreService {
 
   // Colección de historial de todos los registros
   final CollectionReference historial =
+<<<<<<< HEAD
       FirebaseFirestore.instance.collection('Publicaciones');
+=======
+      FirebaseFirestore.instance.collection('historial_alumnos');
+>>>>>>> c57bfee923dfd2b71ffb2fe65f79c159964dbf4f
 
   // Colección de perfiles eliminados
   final CollectionReference perfiles =

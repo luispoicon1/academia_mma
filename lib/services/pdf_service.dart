@@ -2,13 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+<<<<<<< HEAD
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+=======
+>>>>>>> c57bfee923dfd2b71ffb2fe65f79c159964dbf4f
 
 class PdfService {
   static Future<void> generarBoleta({
     required BuildContext context,
     required String nombre,
+<<<<<<< HEAD
     required String apellido,
     required int edad,
     required String dni,
@@ -16,10 +20,13 @@ class PdfService {
     required String celular,
     required String direccion,
     required bool esMenorEdad,
+=======
+>>>>>>> c57bfee923dfd2b71ffb2fe65f79c159964dbf4f
     required String curso,
     required String plan,
     required double monto,
     required DateTime fecha,
+<<<<<<< HEAD
     String apoderado = '',
     String dniApoderado = '',
     String celularApoderado = '',
@@ -102,11 +109,57 @@ class PdfService {
 
             // PIE DE PÁGINA
             _buildPiePagina(logo, fecha),
+=======
+  }) async {
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.roll57, // formato para impresora térmica 58mm
+        build: (context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Center(
+              child: pw.Text(
+                "ACADEMIA TEAM LAN HU",
+                style: pw.TextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ),
+            pw.SizedBox(height: 5),
+            pw.Center(
+              child: pw.Text(
+                "Boleta de Pago",
+                style: pw.TextStyle(
+                  fontSize: 12,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ),
+            pw.Divider(),
+
+            pw.Text("Alumno: $nombre"),
+            pw.Text("Curso: $curso"),
+            pw.Text("Plan: $plan"),
+            pw.Text("Monto: S/ ${monto.toStringAsFixed(2)}"),
+            pw.Text("Fecha: ${fecha.day}/${fecha.month}/${fecha.year}"),
+
+            pw.SizedBox(height: 10),
+            pw.Center(
+              child: pw.Text(
+                "Gracias por tu pago 💪",
+                style: pw.TextStyle(fontSize: 10),
+              ),
+            ),
+>>>>>>> c57bfee923dfd2b71ffb2fe65f79c159964dbf4f
           ],
         ),
       ),
     );
 
+<<<<<<< HEAD
     await _mostrarPreview(context, pdf);
   }
 
@@ -257,6 +310,9 @@ class PdfService {
 
   // 👇 MOSTRAR PREVIEW
   static Future<void> _mostrarPreview(BuildContext context, pw.Document pdf) async {
+=======
+    // 👉 Mostrar preview e imprimir directamente
+>>>>>>> c57bfee923dfd2b71ffb2fe65f79c159964dbf4f
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -273,6 +329,7 @@ class PdfService {
       ),
     );
   }
+<<<<<<< HEAD
 
   // 👇 FORMATEAR FECHA COMPLETA
   static String _formatearFechaCompleta(DateTime fecha) {
@@ -283,3 +340,6 @@ class PdfService {
     return '${fecha.day} de ${meses[fecha.month - 1]} de ${fecha.year}';
   }
 }
+=======
+}
+>>>>>>> c57bfee923dfd2b71ffb2fe65f79c159964dbf4f
