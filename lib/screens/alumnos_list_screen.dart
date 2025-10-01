@@ -8,14 +8,101 @@ import 'package:intl/intl.dart';
 import 'alumno_historial_screen.dart';
 import '../screens/edit_alumno_screen.dart';
 import '../services/pdf_service.dart';
-import 'perfil_fisico_screen.dart'; // 👈 AGREGAR ESTA LÍNEA
+import 'perfil_fisico_screen.dart';
 
-class AlumnosListScreen extends StatelessWidget {
+class AlumnosListScreen extends StatefulWidget {
   const AlumnosListScreen({super.key});
 
   @override
+  State<AlumnosListScreen> createState() => _AlumnosListScreenState();
+}
+
+class _AlumnosListScreenState extends State<AlumnosListScreen> {
+  final FirestoreService fs = FirestoreService();
+  final Map<String, Map<String, dynamic>> _perfilesCache = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarPerfilesFisicos();
+  }
+
+  // Cargar todos los perfiles físicos una sola vez
+  Future<void> _cargarPerfilesFisicos() async {
+    try {
+      print('🔄 Cargando perfiles físicos...');
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('perfiles_fisicos')
+          .get();
+
+      _perfilesCache.clear();
+      
+      for (var doc in querySnapshot.docs) {
+        final data = doc.data();
+        final alumnoId = data['alumnoId'] as String?;
+        
+        if (alumnoId != null) {
+          _perfilesCache[alumnoId] = data;
+          print('✅ Perfil cargado para alumno: $alumnoId');
+        }
+      }
+      
+      print('📊 Total perfiles cargados: ${_perfilesCache.length}');
+      setState(() {});
+      
+    } catch (e) {
+      print('❌ Error cargando perfiles: $e');
+    }
+  }
+
+  // Widget para mostrar el perfil físico
+  Widget _buildPerfilFisico(String alumnoId) {
+    final perfilData = _perfilesCache[alumnoId];
+    
+    if (perfilData == null) {
+      return const Text(
+        '📝 Sin perfil físico',
+        style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic),
+      );
+    }
+
+    final peso = perfilData['peso']?.toDouble() ?? 0.0;
+    final altura = perfilData['altura']?.toDouble() ?? 0.0;
+
+    if (peso <= 0 || altura <= 0) {
+      return const Text(
+        '📝 Perfil incompleto',
+        style: TextStyle(fontSize: 11, color: Colors.orange),
+      );
+    }
+
+    // Convertir altura a cm si está en metros
+    double alturaCm = altura;
+    if (altura < 3) {
+      alturaCm = altura * 100;
+    }
+
+    final imc = peso / ((alturaCm / 100) * (alturaCm / 100));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 4),
+        Text(
+          '⚖️ $peso kg • 📏 ${alturaCm.toStringAsFixed(0)} cm • 🧮 IMC: ${imc.toStringAsFixed(1)}',
+          style: const TextStyle(fontSize: 12, color: Colors.green),
+        ),
+        if (perfilData['pesoObjetivo'] != null)
+          Text(
+            '🎯 Objetivo: ${perfilData['pesoObjetivo']} kg',
+            style: const TextStyle(fontSize: 10, color: Colors.blue),
+          ),
+      ],
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final fs = FirestoreService();
     return Scaffold(
       appBar: AppBar(
         title: const Text('Alumnos'),
@@ -26,19 +113,33 @@ class AlumnosListScreen extends StatelessWidget {
               context,
               MaterialPageRoute(builder: (_) => const AddAlumnoScreen()),
             ),
-          )
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _cargarPerfilesFisicos,
+            tooltip: 'Actualizar perfiles físicos',
+          ),
         ],
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: fs.streamAlumnos(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
           final docs = snapshot.data!.docs;
+
+          if (docs.isEmpty) {
+            return const Center(child: Text('No hay alumnos registrados'));
+          }
+
           return ListView.builder(
             itemCount: docs.length,
             itemBuilder: (context, i) {
               final doc = docs[i];
               final data = doc.data() as Map<String, dynamic>;
+              
               final nombre = data['nombre'] ?? '';
               final curso = data['curso'] ?? '';
               final celular = data['celular'] ?? '';
@@ -61,7 +162,13 @@ class AlumnosListScreen extends StatelessWidget {
                 margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 child: ListTile(
                   title: Text(nombre),
-                  subtitle: Text('$curso • Vence: ${fechaFin.day}/${fechaFin.month}/${fechaFin.year}'),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('$curso • Vence: ${fechaFin.day}/${fechaFin.month}/${fechaFin.year}'),
+                      _buildPerfilFisico(doc.id),
+                    ],
+                  ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -74,7 +181,6 @@ class AlumnosListScreen extends StatelessWidget {
                           launchUrlString(url, mode: LaunchMode.externalApplication);
                         },
                       ),
-
                       IconButton(
                         icon: const Icon(Icons.print, color: Colors.black),
                         onPressed: () async {
@@ -103,7 +209,6 @@ class AlumnosListScreen extends StatelessWidget {
                           );
                         },
                       ),
-
                       IconButton(
                         icon: const Icon(Icons.history, color: Colors.blue),
                         onPressed: () {
@@ -118,7 +223,6 @@ class AlumnosListScreen extends StatelessWidget {
                           );
                         },
                       ),
-
                       IconButton(
                         icon: const Icon(Icons.delete, color: Colors.red),
                         onPressed: () async {
@@ -129,11 +233,13 @@ class AlumnosListScreen extends StatelessWidget {
                               content: const Text('Se eliminará este alumno permanentemente.'),
                               actions: [
                                 TextButton(
-                                    onPressed: () => Navigator.pop(ctx, false),
-                                    child: const Text('Cancelar')),
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: const Text('Cancelar'),
+                                ),
                                 TextButton(
-                                    onPressed: () => Navigator.pop(ctx, true),
-                                    child: const Text('Eliminar')),
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  child: const Text('Eliminar'),
+                                ),
                               ],
                             ),
                           );
@@ -146,7 +252,6 @@ class AlumnosListScreen extends StatelessWidget {
                           }
                         },
                       ),
-
                       IconButton(
                         icon: const Icon(Icons.edit, color: Colors.orange),
                         onPressed: () {
@@ -161,22 +266,23 @@ class AlumnosListScreen extends StatelessWidget {
                           );
                         },
                       ),
-
-IconButton(
-  icon: const Icon(Icons.fitness_center, color: Colors.purple),
-  onPressed: () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => PerfilFisicoScreen(
-          alumnoId: doc.id,
-          nombreAlumno: data['nombre'] ?? '',
-        ),
-      ),
-    );
-  },
-),
-
+                      IconButton(
+                        icon: const Icon(Icons.fitness_center, color: Colors.purple),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => PerfilFisicoScreen(
+                                alumnoId: doc.id,
+                                nombreAlumno: data['nombre'] ?? '',
+                              ),
+                            ),
+                          ).then((_) {
+                            // Recargar perfiles cuando vuelvas
+                            _cargarPerfilesFisicos();
+                          });
+                        },
+                      ),
                       IconButton(
                         icon: const Icon(Icons.info_outline),
                         onPressed: () {
@@ -216,7 +322,7 @@ IconButton(
                             ),
                           );
                         },
-                      )
+                      ),
                     ],
                   ),
                 ),
