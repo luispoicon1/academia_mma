@@ -2,17 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-<<<<<<< HEAD
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
-=======
->>>>>>> c57bfee923dfd2b71ffb2fe65f79c159964dbf4f
 
 class PdfService {
   static Future<void> generarBoleta({
     required BuildContext context,
     required String nombre,
-<<<<<<< HEAD
     required String apellido,
     required int edad,
     required String dni,
@@ -20,13 +16,10 @@ class PdfService {
     required String celular,
     required String direccion,
     required bool esMenorEdad,
-=======
->>>>>>> c57bfee923dfd2b71ffb2fe65f79c159964dbf4f
     required String curso,
     required String plan,
     required double monto,
     required DateTime fecha,
-<<<<<<< HEAD
     String apoderado = '',
     String dniApoderado = '',
     String celularApoderado = '',
@@ -42,7 +35,7 @@ class PdfService {
         pageFormat: PdfPageFormat.roll57,
         build: (context) => pw.Column(
           mainAxisAlignment: pw.MainAxisAlignment.start,
-          crossAxisAlignment: pw.CrossAxisAlignment.center, // 👈 CENTRAR TODO
+          crossAxisAlignment: pw.CrossAxisAlignment.center,
           children: [
             // ENCABEZADO CON LOGO Y DATOS DE LA ACADEMIA
             _buildEncabezado(logo),
@@ -102,68 +95,22 @@ class PdfService {
               contenido: [
                 "Tel: 977908078",
                 "Email: grupotigre.azul@gmail.com",
-                "Sede: Chincha",
-                "Ubicación: Prolongación Colón 715, Chincha Alta",
+                "Sede: Chincha Alta",
+                "Ubicación: Prolongación Colón 715",
               ],
             ),
 
             // PIE DE PÁGINA
             _buildPiePagina(logo, fecha),
-=======
-  }) async {
-    final pdf = pw.Document();
-
-    pdf.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.roll57, // formato para impresora térmica 58mm
-        build: (context) => pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Center(
-              child: pw.Text(
-                "ACADEMIA TEAM LAN HU",
-                style: pw.TextStyle(
-                  fontSize: 14,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-            ),
-            pw.SizedBox(height: 5),
-            pw.Center(
-              child: pw.Text(
-                "Boleta de Pago",
-                style: pw.TextStyle(
-                  fontSize: 12,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-            ),
-            pw.Divider(),
-
-            pw.Text("Alumno: $nombre"),
-            pw.Text("Curso: $curso"),
-            pw.Text("Plan: $plan"),
-            pw.Text("Monto: S/ ${monto.toStringAsFixed(2)}"),
-            pw.Text("Fecha: ${fecha.day}/${fecha.month}/${fecha.year}"),
-
-            pw.SizedBox(height: 10),
-            pw.Center(
-              child: pw.Text(
-                "Gracias por tu pago 💪",
-                style: pw.TextStyle(fontSize: 10),
-              ),
-            ),
->>>>>>> c57bfee923dfd2b71ffb2fe65f79c159964dbf4f
           ],
         ),
       ),
     );
 
-<<<<<<< HEAD
     await _mostrarPreview(context, pdf);
   }
 
-  // 👇 ENCABEZADO CENTRADO
+  // ENCABEZADO CENTRADO
   static pw.Widget _buildEncabezado(pw.ImageProvider? logo) {
     return pw.Center(
       child: pw.Column(
@@ -206,7 +153,7 @@ class PdfService {
     );
   }
 
-  // 👇 SECCIÓN CENTRADA
+  // SECCIÓN CENTRADA
   static pw.Widget _buildSeccionCentrada({
     required String titulo,
     required List<String> contenido,
@@ -241,7 +188,7 @@ class PdfService {
     );
   }
 
-  // 👇 PIE DE PÁGINA CENTRADO
+  // PIE DE PÁGINA CENTRADO
   static pw.Widget _buildPiePagina(pw.ImageProvider? logo, DateTime fecha) {
     return pw.Center(
       child: pw.Column(
@@ -257,7 +204,7 @@ class PdfService {
             ),
           pw.SizedBox(height: 6),
           pw.Text(
-            "¡Gracias por entrenar con nosotros!",
+            "¡Gracias por entrenar con nosotros! 💪",
             style: pw.TextStyle(
               fontSize: 9,
               fontWeight: pw.FontWeight.bold,
@@ -281,38 +228,25 @@ class PdfService {
     );
   }
 
-  // 👇 CARGAR LOGO
+  // CARGAR LOGO
   static Future<pw.MemoryImage?> _cargarLogo() async {
     try {
-      print('🔄 Intentando cargar logo desde assets...');
-      
       final ByteData byteData = await rootBundle.load('assets/logo.jpg');
       final Uint8List imageBytes = byteData.buffer.asUint8List();
-      
-      print('✅ Logo cargado exitosamente - ${imageBytes.length} bytes');
       return pw.MemoryImage(imageBytes);
-      
     } catch (e) {
-      print('❌ Error cargando logo: $e');
-      
       try {
         final ByteData byteData = await rootBundle.load('assets/logo.png');
         final Uint8List imageBytes = byteData.buffer.asUint8List();
-        print('✅ Logo PNG cargado exitosamente');
         return pw.MemoryImage(imageBytes);
       } catch (e2) {
-        print('❌ También falló con PNG: $e2');
+        return null;
       }
-      
-      return null;
     }
   }
 
-  // 👇 MOSTRAR PREVIEW
+  // MOSTRAR PREVIEW
   static Future<void> _mostrarPreview(BuildContext context, pw.Document pdf) async {
-=======
-    // 👉 Mostrar preview e imprimir directamente
->>>>>>> c57bfee923dfd2b71ffb2fe65f79c159964dbf4f
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -329,9 +263,8 @@ class PdfService {
       ),
     );
   }
-<<<<<<< HEAD
 
-  // 👇 FORMATEAR FECHA COMPLETA
+  // FORMATEAR FECHA COMPLETA
   static String _formatearFechaCompleta(DateTime fecha) {
     final meses = [
       'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -340,6 +273,3 @@ class PdfService {
     return '${fecha.day} de ${meses[fecha.month - 1]} de ${fecha.year}';
   }
 }
-=======
-}
->>>>>>> c57bfee923dfd2b71ffb2fe65f79c159964dbf4f

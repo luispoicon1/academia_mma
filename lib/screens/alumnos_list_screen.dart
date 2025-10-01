@@ -9,7 +9,6 @@ import 'alumno_historial_screen.dart';
 import '../screens/edit_alumno_screen.dart';
 import '../services/pdf_service.dart';
 
-
 class AlumnosListScreen extends StatelessWidget {
   const AlumnosListScreen({super.key});
 
@@ -57,17 +56,17 @@ class AlumnosListScreen extends StatelessWidget {
                       : Colors.green[200]!;
 
               return Card(
-  color: color,
-  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-  child: ListTile(
-    title: Text(nombre),
-    subtitle: Text('$curso • Vence: ${fechaFin.day}/${fechaFin.month}/${fechaFin.year}'),
-    trailing: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          icon: const FaIcon(FontAwesomeIcons.whatsapp, color: Colors.green),
-          onPressed: () {
+                color: color,
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: ListTile(
+                  title: Text(nombre),
+                  subtitle: Text('$curso • Vence: ${fechaFin.day}/${fechaFin.month}/${fechaFin.year}'),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const FaIcon(FontAwesomeIcons.whatsapp, color: Colors.green),
+                        onPressed: () {
                           final mensaje = Uri.encodeComponent(
                               'Hola $nombre, tu membresía vence el ${fechaFin.day}/${fechaFin.month}/${fechaFin.year}. ¡Renueva para seguir entrenando! 💪');
                           final url = 'https://wa.me/51$celular?text=$mensaje';
@@ -75,157 +74,113 @@ class AlumnosListScreen extends StatelessWidget {
                         },
                       ),
 
-IconButton(
-  icon: const Icon(Icons.print, color: Colors.black),
-  onPressed: () async { // 🔹 Asegúrate de usar async
-    final monto = (data['monto_pagado'] ?? 0).toDouble();
-    final fechaInicio = (data['fecha_inicio'] as Timestamp).toDate();
+                      IconButton(
+                        icon: const Icon(Icons.print, color: Colors.black),
+                        onPressed: () async {
+                          final montoPrint = (data['monto_pagado'] ?? 0).toDouble();
+                          final fechaInicio = (data['fecha_inicio'] as Timestamp).toDate();
 
-<<<<<<< HEAD
-    // En el IconButton de print, actualiza la llamada:
-await PdfService.generarBoleta(
-  context: context,
-  nombre: data['nombre'] ?? '',
-  apellido: data['apellido'] ?? '',
-  edad: data['edad'] ?? 0,
-  dni: data['dni'] ?? '',
-  correo: data['correo'] ?? '',
-  celular: data['celular'] ?? '',
-  direccion: data['direccion'] ?? '',
-  esMenorEdad: data['es_menor_edad'] ?? false,
-  apoderado: data['apoderado'] ?? '',
-  dniApoderado: data['dni_apoderado'] ?? '',
-  celularApoderado: data['celular_apoderado'] ?? '',
-  curso: curso,
-  plan: plan,
-  turno: data['turno'] ?? '',
-  promocion: data['promocion'] ?? '',
-  monto: monto,
-  fecha: fechaInicio,
-);
-=======
-    await PdfService.generarBoleta(
-      context: context,
-      nombre: nombre,
-      curso: curso,
-      plan: plan,
-      monto: monto,
-      fecha: fechaInicio,
-    );
->>>>>>> c57bfee923dfd2b71ffb2fe65f79c159964dbf4f
-  },
-),
+                          await PdfService.generarBoleta(
+                            context: context,
+                            nombre: data['nombre'] ?? '',
+                            apellido: data['apellido'] ?? '',
+                            edad: data['edad'] ?? 0,
+                            dni: data['dni'] ?? '',
+                            correo: data['correo'] ?? '',
+                            celular: data['celular'] ?? '',
+                            direccion: data['direccion'] ?? '',
+                            esMenorEdad: data['es_menor_edad'] ?? false,
+                            apoderado: data['apoderado'] ?? '',
+                            dniApoderado: data['dni_apoderado'] ?? '',
+                            celularApoderado: data['celular_apoderado'] ?? '',
+                            curso: curso,
+                            plan: plan,
+                            turno: data['turno'] ?? '',
+                            promocion: data['promocion'] ?? '',
+                            monto: montoPrint,
+                            fecha: fechaInicio,
+                          );
+                        },
+                      ),
 
+                      IconButton(
+                        icon: const Icon(Icons.history, color: Colors.blue),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => AlumnoHistorialScreen(
+                                alumnoId: doc.id,
+                                nombre: data['nombre'] ?? '',
+                              ),
+                            ),
+                          );
+                        },
+                      ),
 
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        onPressed: () async {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('¿Eliminar alumno?'),
+                              content: const Text('Se eliminará este alumno permanentemente.'),
+                              actions: [
+                                TextButton(
+                                    onPressed: () => Navigator.pop(ctx, false),
+                                    child: const Text('Cancelar')),
+                                TextButton(
+                                    onPressed: () => Navigator.pop(ctx, true),
+                                    child: const Text('Eliminar')),
+                              ],
+                            ),
+                          );
 
-IconButton(
-          icon: const Icon(Icons.history, color: Colors.blue),
-          onPressed: () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => AlumnoHistorialScreen(
-          alumnoId: doc.id,
-          nombre: data['nombre'] ?? '',
-        ),
-      ),
-    );
-  },
-),
+                          if (confirm == true) {
+                            await FirebaseFirestore.instance
+                                .collection('alumnos')
+                                .doc(doc.id)
+                                .delete();
+                          }
+                        },
+                      ),
 
-IconButton(
-  icon: const Icon(Icons.delete, color: Colors.red),
-  onPressed: () async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('¿Eliminar alumno?'),
-        content: const Text('Se eliminará este alumno permanentemente.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar')),
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Eliminar')),
-        ],
-      ),
-    );
+                      IconButton(
+                        icon: const Icon(Icons.edit, color: Colors.orange),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => EditAlumnoScreen(
+                                alumnoId: doc.id,
+                                data: data,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
 
-    if (confirm == true) {
-      await FirebaseFirestore.instance
-          .collection('alumnos')
-          .doc(doc.id)
-          .delete();
-    }
-  },
-),
-
-
-IconButton(
-  icon: const Icon(Icons.edit, color: Colors.orange),
-  onPressed: () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => EditAlumnoScreen(
-          alumnoId: doc.id,
-          data: data,
-        ),
-      ),
-    );
-  },
-),
-
-
-
-                       IconButton(
-          icon: const Icon(Icons.info_outline),
-          onPressed: () {
-                          // 🔹 Mostrar ventana flotante con todos los datos
+                      IconButton(
+                        icon: const Icon(Icons.info_outline),
+                        onPressed: () {
                           showDialog(
                             context: context,
-<<<<<<< HEAD
-                            // En el IconButton de info_outline, modifica el contenido del AlertDialog:
-builder: (_) => AlertDialog(
-  title: Text('$nombre ${data['apellido'] ?? ''}'),
-  content: Column(
-    mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text('Edad: ${data['edad'] ?? ''} años'),
-      Text('DNI: ${data['dni'] ?? ''}'),
-      Text('Correo: ${data['correo'] ?? 'No especificado'}'),
-      Text('Dirección: ${data['direccion'] ?? ''}'),
-      if (data['es_menor_edad'] == true) ...[
-        Text('Apoderado: ${data['apoderado'] ?? ''}'),
-        Text('DNI Apoderado: ${data['dni_apoderado'] ?? ''}'),
-        Text('Celular Apoderado: ${data['celular_apoderado'] ?? ''}'),
-      ],
-      Text('Curso: $curso'),
-      Text('Plan: $plan'),
-      Text('Turno: $turno'),
-      Text('Promoción: $promocion'),
-      Text('Monto pagado: S/ $monto'),
-      Text('Fecha inicio: ${DateFormat('dd/MM/yyyy').format((data['fecha_inicio'] as Timestamp).toDate())}'),
-      Text('Fecha fin: ${DateFormat('dd/MM/yyyy').format(fechaFin)}'),
-      Text('Estado: $estado'),
-    ],
-  ),
-  actions: [
-    TextButton(
-      child: const Text('Cerrar'),
-      onPressed: () => Navigator.pop(context),
-    ),
-  ],
-),
-=======
                             builder: (_) => AlertDialog(
-                              title: Text(nombre),
+                              title: Text('$nombre ${data['apellido'] ?? ''}'),
                               content: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  Text('Edad: ${data['edad'] ?? ''} años'),
+                                  Text('DNI: ${data['dni'] ?? ''}'),
+                                  Text('Correo: ${data['correo'] ?? 'No especificado'}'),
+                                  Text('Dirección: ${data['direccion'] ?? ''}'),
+                                  if (data['es_menor_edad'] == true) ...[
+                                    Text('Apoderado: ${data['apoderado'] ?? ''}'),
+                                    Text('DNI Apoderado: ${data['dni_apoderado'] ?? ''}'),
+                                    Text('Celular Apoderado: ${data['celular_apoderado'] ?? ''}'),
+                                  ],
                                   Text('Curso: $curso'),
                                   Text('Plan: $plan'),
                                   Text('Turno: $turno'),
@@ -236,9 +191,6 @@ builder: (_) => AlertDialog(
                                   Text('Estado: $estado'),
                                 ],
                               ),
-
-
-                              
                               actions: [
                                 TextButton(
                                   child: const Text('Cerrar'),
@@ -246,7 +198,6 @@ builder: (_) => AlertDialog(
                                 ),
                               ],
                             ),
->>>>>>> c57bfee923dfd2b71ffb2fe65f79c159964dbf4f
                           );
                         },
                       )
@@ -257,7 +208,6 @@ builder: (_) => AlertDialog(
             },
           );
         },
-        
       ),
     );
   }

@@ -16,17 +16,11 @@ class AlumnoHistorialScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: Text('Historial de $nombre')),
       body: StreamBuilder<QuerySnapshot>(
-<<<<<<< HEAD
         stream: fs.historial
             .where('alumnoId', isEqualTo: alumnoId)
             .orderBy('fecha_registro', descending: true)
             .snapshots(),
         builder: (context, snapshot) {
-          // 🔍 DEBUG: Agregar más estados
-          print('📱 Estado de conexión: ${snapshot.connectionState}');
-          print('📱 Tiene datos: ${snapshot.hasData}');
-          print('📱 Tiene error: ${snapshot.hasError}');
-          
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
               child: Column(
@@ -41,16 +35,15 @@ class AlumnoHistorialScreen extends StatelessWidget {
           }
 
           if (snapshot.hasError) {
-            print('❌ Error en historial: ${snapshot.error}');
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.error, size: 64, color: Colors.red),
-                  SizedBox(height: 16),
-                  Text('Error al cargar historial'),
-                  Text('${snapshot.error}', style: TextStyle(color: Colors.red)),
-                  SizedBox(height: 16),
+                  const Icon(Icons.error, size: 64, color: Colors.red),
+                  const SizedBox(height: 16),
+                  const Text('Error al cargar historial'),
+                  Text('${snapshot.error}', style: const TextStyle(color: Colors.red)),
+                  const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: () => Navigator.pop(context),
                     child: const Text('Volver'),
@@ -61,13 +54,10 @@ class AlumnoHistorialScreen extends StatelessWidget {
           }
 
           if (!snapshot.hasData) {
-            return const Center(
-              child: Text('No se encontraron datos'),
-            );
+            return const Center(child: Text('No se encontraron datos'));
           }
 
           final docs = snapshot.data!.docs;
-          print('📊 Documentos en historial: ${docs.length}');
 
           if (docs.isEmpty) {
             return const Center(
@@ -83,29 +73,13 @@ class AlumnoHistorialScreen extends StatelessWidget {
               ),
             );
           }
-=======
-        stream: fs.historial.where('alumnoId', isEqualTo: alumnoId).orderBy('fecha_registro', descending: true).snapshots()
-,
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-          final docs = snapshot.data!.docs;
-
-          if (docs.isEmpty) return const Center(child: Text('No hay historial aún'));
->>>>>>> c57bfee923dfd2b71ffb2fe65f79c159964dbf4f
 
           return ListView.builder(
             itemCount: docs.length,
             itemBuilder: (context, i) {
-<<<<<<< HEAD
               final doc = docs[i];
               final data = doc.data() as Map<String, dynamic>;
               
-              // 🔍 DEBUG: Verificar campos
-              print('📄 Documento $i: $data');
-              
-=======
-              final data = docs[i].data() as Map<String, dynamic>;
->>>>>>> c57bfee923dfd2b71ffb2fe65f79c159964dbf4f
               final fechaInicio = (data['fecha_inicio'] as Timestamp).toDate();
               final fechaFin = (data['fecha_fin'] as Timestamp).toDate();
               final plan = data['plan'] ?? '';
@@ -120,35 +94,19 @@ class AlumnoHistorialScreen extends StatelessWidget {
                 child: ListTile(
                   title: Text('$curso • $plan • $turno'),
                   subtitle: Text(
-<<<<<<< HEAD
                     'Inicio: ${DateFormat('dd/MM/yyyy').format(fechaInicio)}\n'
                     'Fin: ${DateFormat('dd/MM/yyyy').format(fechaFin)}\n'
                     'Promoción: $promocion\nMonto: S/ $monto\nEstado: $estado'
                   ),
-=======
-                      'Inicio: ${DateFormat('dd/MM/yyyy').format(fechaInicio)}\n'
-                      'Fin: ${DateFormat('dd/MM/yyyy').format(fechaFin)}\n'
-                      'Promoción: $promocion\nMonto: S/ $monto\nEstado: $estado'),
->>>>>>> c57bfee923dfd2b71ffb2fe65f79c159964dbf4f
                   isThreeLine: true,
                   trailing: IconButton(
                     icon: const Icon(Icons.delete, color: Colors.red),
                     onPressed: () async {
-<<<<<<< HEAD
                       bool confirm = await showDialog(
-=======
-                      bool confirm = false;
-                      confirm = await showDialog(
->>>>>>> c57bfee923dfd2b71ffb2fe65f79c159964dbf4f
                         context: context,
                         builder: (ctx) => AlertDialog(
                           title: const Text('¿Eliminar registro?'),
-                          content: const Text(
-<<<<<<< HEAD
-                              'Se eliminará este registro del historial.'),
-=======
-                              'Se eliminará este registro del historial y se guardará como perfil eliminado.'),
->>>>>>> c57bfee923dfd2b71ffb2fe65f79c159964dbf4f
+                          content: const Text('Se eliminará este registro del historial.'),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(ctx, false),
@@ -162,16 +120,12 @@ class AlumnoHistorialScreen extends StatelessWidget {
                         ),
                       );
 
-<<<<<<< HEAD
                       if (confirm == true) {
                         await fs.historial.doc(doc.id).delete();
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('Registro eliminado')),
                         );
                       }
-=======
-                  
->>>>>>> c57bfee923dfd2b71ffb2fe65f79c159964dbf4f
                     },
                   ),
                 ),
@@ -182,8 +136,4 @@ class AlumnoHistorialScreen extends StatelessWidget {
       ),
     );
   }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> c57bfee923dfd2b71ffb2fe65f79c159964dbf4f
