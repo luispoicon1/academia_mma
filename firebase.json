@@ -1,0 +1,39 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "academia-mma",
+          "appId": "1:44868715419:android:fe9e1293867cb1e3ce973e",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "academia-mma",
+          "configurations": {
+            "android": "1:44868715419:android:fe9e1293867cb1e3ce973e",
+            "ios": "1:44868715419:ios:8e0dcab3b71cf0acce973e",
+            "macos": "1:44868715419:ios:8e0dcab3b71cf0acce973e",
+            "web": "1:44868715419:web:2b980b9284cee7edce973e",
+            "windows": "1:44868715419:web:337fbe9dbc8d1636ce973e"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
