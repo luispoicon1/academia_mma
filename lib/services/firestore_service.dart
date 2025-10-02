@@ -7,7 +7,7 @@ class FirestoreService {
 
   // Colección de historial de todos los registros
   final CollectionReference historial =
-      FirebaseFirestore.instance.collection('historial');
+      FirebaseFirestore.instance.collection('Publicaciones');
 
   // Colección de perfiles eliminados
   final CollectionReference perfiles =
@@ -109,6 +109,44 @@ class FirestoreService {
 
     return total;
   }
+
+
+// En FirestoreService, agrega este método si quieres usar la colección pagos:
+Future<Map<String, double>> calcularIngresosPorMetodoPago(int anio, int mes) async {
+  try {
+    final inicioMes = DateTime(anio, mes, 1);
+    final finMes = DateTime(anio, mes + 1, 0, 23, 59, 59);
+
+    final snapshot = await alumnos
+        .where('fecha_inicio', isGreaterThanOrEqualTo: Timestamp.fromDate(inicioMes))
+        .where('fecha_inicio', isLessThanOrEqualTo: Timestamp.fromDate(finMes))
+        .get();
+
+    double totalEfectivo = 0;
+    double totalYape = 0;
+
+    for (var doc in snapshot.docs) {
+      final data = doc.data() as Map<String, dynamic>;
+      final monto = (data['monto_pagado'] ?? 0).toDouble();
+      final metodo = (data['metodo_pago'] ?? 'Efectivo').toString();
+
+      if (metodo.toLowerCase().contains('yape')) {
+        totalYape += monto;
+      } else {
+        totalEfectivo += monto;
+      }
+    }
+
+    return {
+      'efectivo': totalEfectivo,
+      'yape': totalYape,
+      'total': totalEfectivo + totalYape,
+    };
+  } catch (e) {
+    print('Error calculando ingresos por método: $e');
+    return {'efectivo': 0, 'yape': 0, 'total': 0};
+  }
+}
 
 // En FirestoreService
 final CollectionReference perfilesFisicos =

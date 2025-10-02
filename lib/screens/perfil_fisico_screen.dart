@@ -76,14 +76,8 @@ class _PerfilFisicoScreenState extends State<PerfilFisicoScreen> {
     );
   }
 
-  // Widget para mostrar el último perfil guardado
+  // Widget para mostrar el último perfil físico (NUEVO MÉTODO AÑADIDO)
   Widget _buildUltimoPerfil() {
-    final data = _ultimoPerfil!;
-    final fecha = (data['fechaRegistro'] as Timestamp).toDate();
-    final peso = data['peso'] ?? 0;
-    final altura = data['altura'] ?? 0;
-    final imc = peso / ((altura / 100) * (altura / 100));
-
     return Card(
       color: Colors.blue[50],
       child: Padding(
@@ -91,65 +85,146 @@ class _PerfilFisicoScreenState extends State<PerfilFisicoScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Icon(Icons.info, color: Colors.blue),
-                const SizedBox(width: 8),
-                const Text(
-                  'Último Registro',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blue),
-                ),
-                const Spacer(),
-                Text(
-                  '${fecha.day}/${fecha.month}/${fecha.year}',
-                  style: const TextStyle(color: Colors.grey),
-                ),
-              ],
+            const Text(
+              'Último Perfil Registrado',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue),
             ),
             const SizedBox(height: 10),
-            // Medidas básicas
-            _buildLineaMedida('⚖️ Peso', '$peso kg'),
-            _buildLineaMedida('📏 Altura', '$altura cm'),
-            _buildLineaMedida('🧮 IMC', '${imc.toStringAsFixed(1)} (${_categoriaIMC(imc)})'),
-            
-            // Medidas corporales si existen
-            if (data['cintura'] != null && data['cintura'] > 0)
-              _buildLineaMedida('📐 Cintura', '${data['cintura']} cm'),
-            if (data['pecho'] != null && data['pecho'] > 0)
-              _buildLineaMedida('💪 Pecho', '${data['pecho']} cm'),
-            if (data['espalda'] != null && data['espalda'] > 0)
-              _buildLineaMedida('🔙 Espalda', '${data['espalda']} cm'),
-            if (data['hombros'] != null && data['hombros'] > 0)
-              _buildLineaMedida('👤 Hombros', '${data['hombros']} cm'),
-            
-            // Observaciones si existen
-            if (data['observaciones'] != null && data['observaciones'].isNotEmpty)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 8),
-                  const Text(
-                    '📝 Observaciones:',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  Text(data['observaciones']),
-                ],
-              ),
+            _buildPerfilFisico(_ultimoPerfil!),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildLineaMedida(String label, String valor) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2.0),
-      child: Row(
-        children: [
-          SizedBox(width: 120, child: Text(label)),
-          Text(valor),
-        ],
-      ),
+  // Widget para mostrar el perfil físico (CORREGIDO)
+  Widget _buildPerfilFisico(Map<String, dynamic> perfilData) {
+    final peso = perfilData['peso']?.toDouble() ?? 0.0;
+    final altura = perfilData['altura']?.toDouble() ?? 0.0;
+
+    if (peso <= 0 || altura <= 0) {
+      return const Text(
+        '📝 Perfil incompleto',
+        style: TextStyle(fontSize: 14, color: Colors.orange),
+      );
+    }
+
+    // Convertir altura a cm si está en metros
+    double alturaCm = altura;
+    if (altura < 3) {
+      alturaCm = altura * 100;
+    }
+
+    final imc = peso / ((alturaCm / 100) * (alturaCm / 100));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Línea 1: Medidas básicas
+        Text(
+          '⚖️ Peso: $peso kg • 📏 Altura: ${alturaCm.toStringAsFixed(0)} cm',
+          style: const TextStyle(fontSize: 14, color: Colors.green),
+        ),
+        const SizedBox(height: 5),
+        
+        // Línea 2: IMC
+        Text(
+          '🧮 IMC: ${imc.toStringAsFixed(1)} (${_categoriaIMC(imc)})',
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 5),
+        
+        // Línea 3: Medidas corporales si existen
+        if (_tieneMedidasCorporales(perfilData))
+          _buildMedidasCorporales(perfilData),
+        
+        // Línea 4: Peso objetivo si existe
+        if (perfilData['pesoObjetivo'] != null && perfilData['pesoObjetivo'] > 0)
+          Text(
+            '🎯 Peso Objetivo: ${perfilData['pesoObjetivo']} kg',
+            style: const TextStyle(fontSize: 14, color: Colors.blue),
+          ),
+        
+        // Línea 5: Observaciones si existen
+        if (perfilData['observaciones'] != null && perfilData['observaciones'].isNotEmpty)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 5),
+              const Text(
+                '📝 Observaciones:',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+              ),
+              Text(
+                perfilData['observaciones'],
+                style: const TextStyle(fontSize: 14, fontStyle: FontStyle.italic),
+              ),
+            ],
+          ),
+        
+        // Línea 6: Fecha de registro
+        const SizedBox(height: 10),
+        Text(
+          '📅 Fecha: ${_formatearFecha(perfilData['fechaRegistro'])}',
+          style: const TextStyle(fontSize: 12, color: Colors.grey),
+        ),
+      ],
+    );
+  }
+
+  // Función para formatear fecha
+  String _formatearFecha(Timestamp timestamp) {
+    final date = timestamp.toDate();
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
+  // Función para verificar si hay medidas corporales
+  bool _tieneMedidasCorporales(Map<String, dynamic> perfilData) {
+    return (perfilData['cintura'] != null && perfilData['cintura'] > 0) ||
+           (perfilData['pecho'] != null && perfilData['pecho'] > 0) ||
+           (perfilData['espalda'] != null && perfilData['espalda'] > 0) ||
+           (perfilData['hombros'] != null && perfilData['hombros'] > 0) ||
+           (perfilData['brazo'] != null && perfilData['brazo'] > 0) ||
+           (perfilData['pierna'] != null && perfilData['pierna'] > 0);
+  }
+
+  // Widget para mostrar medidas corporales
+  Widget _buildMedidasCorporales(Map<String, dynamic> perfilData) {
+    final List<Widget> medidasWidgets = [];
+    
+    void agregarMedida(String icono, String label, dynamic valor) {
+      if (valor != null && valor > 0) {
+        medidasWidgets.add(
+          Text(
+            '$icono $label: ${valor}cm',
+            style: const TextStyle(fontSize: 12),
+          ),
+        );
+      }
+    }
+
+    agregarMedida('📐', 'Cintura', perfilData['cintura']);
+    agregarMedida('💪', 'Pecho', perfilData['pecho']);
+    agregarMedida('🔙', 'Espalda', perfilData['espalda']);
+    agregarMedida('👤', 'Hombros', perfilData['hombros']);
+    agregarMedida('💪', 'Brazo', perfilData['brazo']);
+    agregarMedida('🦵', 'Pierna', perfilData['pierna']);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 5),
+        const Text(
+          'Medidas Corporales:',
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 5),
+        Wrap(
+          spacing: 10,
+          runSpacing: 5,
+          children: medidasWidgets,
+        ),
+      ],
     );
   }
 
@@ -333,6 +408,7 @@ class _PerfilFisicoScreenState extends State<PerfilFisicoScreen> {
       _hombrosCtrl.clear();
       _brazoCtrl.clear();
       _piernaCtrl.clear();
+      _pesoObjetivoCtrl.clear();
       _observacionesCtrl.clear();
       
     } catch (e) {

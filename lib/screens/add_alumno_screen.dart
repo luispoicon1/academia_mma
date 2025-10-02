@@ -28,6 +28,7 @@ class _AddAlumnoScreenState extends State<AddAlumnoScreen> {
   String turno = 'Mañana';
   String plan = 'Plan Fijo';
   String promocion = 'Ninguna';
+  String metodoPago = 'Efectivo';
   DateTime fechaInicio = DateTime.now();
   bool _esMenorEdad = false;
 
@@ -137,6 +138,17 @@ class _AddAlumnoScreenState extends State<AddAlumnoScreen> {
                     }
                     return null;
                   },
+                ),
+                const SizedBox(height: 10),
+
+                // MÉTODO DE PAGO
+                DropdownButtonFormField<String>(
+                  value: metodoPago,
+                  items: ['Efectivo', 'Yape']
+                      .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                      .toList(),
+                  onChanged: (v) => setState(() => metodoPago = v!),
+                  decoration: const InputDecoration(labelText: "Método de Pago"),
                 ),
                 const SizedBox(height: 10),
 
@@ -290,6 +302,7 @@ class _AddAlumnoScreenState extends State<AddAlumnoScreen> {
                       'curso': curso,
                       'turno': turno,
                       'plan': plan,
+                      'metodo_pago': metodoPago,
                       'fecha_inicio': Timestamp.fromDate(fechaInicio),
                       'fecha_fin': Timestamp.fromDate(fechaFin),
                       'estado': estado,
@@ -300,6 +313,14 @@ class _AddAlumnoScreenState extends State<AddAlumnoScreen> {
 
                     // Guardar en Firestore
                     await FirestoreService().addAlumno(data);
+
+                    // Registrar también en la colección de pagos
+                    await _registrarPagoSeparado(
+                      nombre: '${_nombreCtrl.text.trim()} ${_apellidoCtrl.text.trim()}',
+                      monto: monto,
+                      curso: curso,
+                      metodo: metodoPago,
+                    );
 
                     // Mostrar boleta
                     await PdfService.generarBoleta(
@@ -320,6 +341,7 @@ class _AddAlumnoScreenState extends State<AddAlumnoScreen> {
                       turno: turno,
                       promocion: promocion,
                       monto: monto,
+                      metodoPago: metodoPago,
                       fecha: DateTime.now(),
                     );
 
@@ -346,6 +368,7 @@ class _AddAlumnoScreenState extends State<AddAlumnoScreen> {
                       plan = 'Plan Fijo';
                       turno = 'Mañana';
                       promocion = 'Ninguna';
+                      metodoPago = 'Efectivo';
                       fechaInicio = DateTime.now();
                       _esMenorEdad = false;
                     });
@@ -357,5 +380,22 @@ class _AddAlumnoScreenState extends State<AddAlumnoScreen> {
         ),
       ),
     );
+  }
+
+  // Función para registrar pago en colección separada
+  Future<void> _registrarPagoSeparado({
+    required String nombre,
+    required double monto,
+    required String curso,
+    required String metodo,
+  }) async {
+    await FirebaseFirestore.instance.collection('pagos').add({
+      'nombre': nombre,
+      'monto': monto,
+      'curso': curso,
+      'metodo': metodo,
+      'fecha_pago': Timestamp.now(),
+      'tipo': 'inscripcion',
+    });
   }
 }
