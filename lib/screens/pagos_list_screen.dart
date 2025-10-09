@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 class PagosListScreen extends StatelessWidget {
   const PagosListScreen({super.key});
 
+  
+
   @override
   Widget build(BuildContext context) {
     final fs = FirestoreService();
@@ -35,3 +37,4 @@ class PagosListScreen extends StatelessWidget {
     );
   }
 }
+

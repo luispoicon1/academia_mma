@@ -14,9 +14,11 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart'; // Para Clipboard
-import 'dart:convert' show utf8;
-import 'dart:html' as html; // Solo para web
+import 'package:flutter/services.dart';
+import 'dart:convert' show utf8, base64Encode;
+import 'package:share_plus/share_plus.dart';
+import 'package:cross_file/cross_file.dart';
+import 'renovar_mensualidad_screen.dart'; // Agrega esta línea
 
 class AlumnosListScreen extends StatefulWidget {
   const AlumnosListScreen({super.key});
@@ -29,308 +31,186 @@ class _AlumnosListScreenState extends State<AlumnosListScreen> {
   final FirestoreService fs = FirestoreService();
   final Map<String, Map<String, dynamic>> _perfilesCache = {};
   
+  // ============ FUNCIÓN MEJORADA PARA PERMISOS ============
+  Future<bool> _verificarPermisosAlmacenamiento() async {
+    try {
+      if (kIsWeb) return true;
+      
+      if (Platform.isAndroid) {
+        if (await Permission.storage.isGranted) {
+          return true;
+        }
+        
+        final status = await Permission.storage.request();
+        return status.isGranted;
+      }
+      
+      if (Platform.isIOS) {
+        return true;
+      }
+      
+      return true;
+      
+    } catch (e) {
+      print('Error verificando permisos: $e');
+      return true;
+    }
+  }
+
   // ============ VARIABLES PARA FILTROS ============
   final TextEditingController _searchController = TextEditingController();
   String _selectedCurso = 'Todos';
   String _selectedPlan = 'Todos';
   String _selectedMetodoPago = 'Todos';
   String _selectedEstado = 'Todos';
+  bool _filtrosExpandidos = false;
   
-  // Listas para los dropdowns
   List<String> _cursos = ['Todos'];
   List<String> _planes = ['Todos'];
   List<String> _metodosPago = ['Todos'];
 
   @override
-void initState() {
-  super.initState();
-  _cargarPerfilesFisicos();
-  _cargarOpcionesFiltros();
-}
-
-
-  
-
-  // Cargar todos los perfiles físicos una sola vez
-  Future<void> _cargarPerfilesFisicos() async {
-    try {
-      print('🔄 Cargando perfiles físicos...');
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('perfiles_fisicos')
-          .get();
-
-      _perfilesCache.clear();
-      
-      for (var doc in querySnapshot.docs) {
-        final data = doc.data();
-        final alumnoId = data['alumnoId'] as String?;
-        
-        if (alumnoId != null) {
-          _perfilesCache[alumnoId] = data;
-          print('✅ Perfil cargado para alumno: $alumnoId');
-        }
-      }
-      
-      print('📊 Total perfiles cargados: ${_perfilesCache.length}');
-      setState(() {});
-      
-    } catch (e) {
-      print('❌ Error cargando perfiles: $e');
-    }
+  void initState() {
+    super.initState();
+    _cargarPerfilesFisicos();
+    _cargarOpcionesFiltros();
   }
 
-// ============ CARGAR OPCIONES PARA FILTROS ============
-Future<void> _cargarOpcionesFiltros() async {
+  Future<void> _cargarPerfilesFisicos() async {
   try {
-    final querySnapshot = await FirebaseFirestore.instance
-        .collection('alumnos')
+    // Cargar perfiles físicos
+    final perfilesSnapshot = await FirebaseFirestore.instance
+        .collection('perfiles_fisicos')
         .get();
 
-    final cursosSet = <String>{};
-    final planesSet = <String>{};
-    final metodosPagoSet = <String>{};
-
-    for (var doc in querySnapshot.docs) {
+    _perfilesCache.clear();
+    
+    for (var doc in perfilesSnapshot.docs) {
       final data = doc.data();
-      if (data['curso'] != null) cursosSet.add(data['curso']);
-      if (data['plan'] != null) planesSet.add(data['plan']);
-      if (data['metodo_pago'] != null) metodosPagoSet.add(data['metodo_pago']);
+      final alumnoId = data['alumnoId'] as String?;
+      
+      if (alumnoId != null) {
+        _perfilesCache[alumnoId] = data;
+      }
     }
-
-    setState(() {
-      _cursos = ['Todos']..addAll(cursosSet.toList()..sort());
-      _planes = ['Todos']..addAll(planesSet.toList()..sort());
-      _metodosPago = ['Todos']..addAll(metodosPagoSet.toList()..sort());
-    });
+    
+    // Cargar niveles desde alumnos collection (para actualizaciones rápidas)
+    final alumnosSnapshot = await FirebaseFirestore.instance
+        .collection('alumnos')
+        .get();
+    
+    for (var doc in alumnosSnapshot.docs) {
+      final data = doc.data();
+      final alumnoId = doc.id;
+      
+      // Si el alumno tiene niveles actualizados pero no tiene perfil físico reciente
+      // crear un perfil básico con los niveles
+      if (data['cinturon_jiujitsu'] != null || data['nivel_mma'] != null) {
+        if (!_perfilesCache.containsKey(alumnoId)) {
+          _perfilesCache[alumnoId] = {
+            'niveles_registrados': {
+              'jiujitsu': data['cinturon_jiujitsu'] ?? 'Blanco',
+              'mma': data['nivel_mma'] ?? 'Principiante',
+              'box': data['nivel_box'] ?? 'Principiante',
+              'muay_thai': data['nivel_muay_thai'] ?? 'Principiante',
+              'sanda': data['cinturon_sanda'] ?? 'Blanco',
+            }
+          };
+        } else {
+          // Si ya tiene perfil, actualizar los niveles con los más recientes
+          final perfilExistente = _perfilesCache[alumnoId]!;
+          _perfilesCache[alumnoId] = {
+            ...perfilExistente,
+            'niveles_registrados': {
+              'jiujitsu': data['cinturon_jiujitsu'] ?? perfilExistente['niveles_registrados']?['jiujitsu'] ?? 'Blanco',
+              'mma': data['nivel_mma'] ?? perfilExistente['niveles_registrados']?['mma'] ?? 'Principiante',
+              'box': data['nivel_box'] ?? perfilExistente['niveles_registrados']?['box'] ?? 'Principiante',
+              'muay_thai': data['nivel_muay_thai'] ?? perfilExistente['niveles_registrados']?['muay_thai'] ?? 'Principiante',
+              'sanda': data['cinturon_sanda'] ?? perfilExistente['niveles_registrados']?['sanda'] ?? 'Blanco',
+            }
+          };
+        }
+      }
+    }
+    
+    setState(() {});
+    
   } catch (e) {
-    print('Error cargando opciones de filtros: $e');
+    print('❌ Error cargando datos completos: $e');
   }
 }
+  Future<void> _cargarOpcionesFiltros() async {
+    try {
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('alumnos')
+          .get();
 
-// ============ APLICAR FILTROS ============
-bool _aplicarFiltros(Map<String, dynamic> data) {
-  final nombreCompleto = '${data['nombre'] ?? ''} ${data['apellido'] ?? ''}'.toLowerCase();
-  final busqueda = _searchController.text.toLowerCase();
-  
-  // Filtro por búsqueda de texto
-  if (_searchController.text.isNotEmpty && 
-      !nombreCompleto.contains(busqueda)) {
-    return false;
+      final cursosSet = <String>{};
+      final planesSet = <String>{};
+      final metodosPagoSet = <String>{};
+
+      for (var doc in querySnapshot.docs) {
+        final data = doc.data();
+        if (data['curso'] != null) cursosSet.add(data['curso']);
+        if (data['plan'] != null) planesSet.add(data['plan']);
+        if (data['metodo_pago'] != null) metodosPagoSet.add(data['metodo_pago']);
+      }
+
+      setState(() {
+        _cursos = ['Todos']..addAll(cursosSet.toList()..sort());
+        _planes = ['Todos']..addAll(planesSet.toList()..sort());
+        _metodosPago = ['Todos']..addAll(metodosPagoSet.toList()..sort());
+      });
+    } catch (e) {
+      print('Error cargando opciones de filtros: $e');
+    }
   }
-  
-  // Filtro por curso
-  if (_selectedCurso != 'Todos' && data['curso'] != _selectedCurso) {
-    return false;
-  }
-  
-  // Filtro por plan
-  if (_selectedPlan != 'Todos' && data['plan'] != _selectedPlan) {
-    return false;
-  }
-  
-  // Filtro por método de pago
-  if (_selectedMetodoPago != 'Todos' && data['metodo_pago'] != _selectedMetodoPago) {
-    return false;
-  }
-  
-  // Filtro por estado
-  if (_selectedEstado != 'Todos') {
-    final tsFin = data['fecha_fin'] as Timestamp?;
-    final fechaFin = tsFin?.toDate() ?? DateTime.now();
-    final estadoReal = FirestoreService.calcularEstado(fechaFin);
+
+  bool _aplicarFiltros(Map<String, dynamic> data) {
+    final nombreCompleto = '${data['nombre'] ?? ''} ${data['apellido'] ?? ''}'.toLowerCase();
+    final busqueda = _searchController.text.toLowerCase();
     
-    if (_selectedEstado != estadoReal) {
+    if (_searchController.text.isNotEmpty && !nombreCompleto.contains(busqueda)) {
       return false;
     }
+    
+    if (_selectedCurso != 'Todos' && data['curso'] != _selectedCurso) {
+      return false;
+    }
+    
+    if (_selectedPlan != 'Todos' && data['plan'] != _selectedPlan) {
+      return false;
+    }
+    
+    if (_selectedMetodoPago != 'Todos' && data['metodo_pago'] != _selectedMetodoPago) {
+      return false;
+    }
+    
+    if (_selectedEstado != 'Todos') {
+      final tsFin = data['fecha_fin'] as Timestamp?;
+      final fechaFin = tsFin?.toDate() ?? DateTime.now();
+      final estadoReal = FirestoreService.calcularEstado(fechaFin);
+      
+      if (_selectedEstado != estadoReal) {
+        return false;
+      }
+    }
+    
+    return true;
   }
-  
-  return true;
-}
 
-// ============ LIMPIAR FILTROS ============
-void _limpiarFiltros() {
-  setState(() {
-    _searchController.clear();
-    _selectedCurso = 'Todos';
-    _selectedPlan = 'Todos';
-    _selectedMetodoPago = 'Todos';
-    _selectedEstado = 'Todos';
-  });
-}
+  void _limpiarFiltros() {
+    setState(() {
+      _searchController.clear();
+      _selectedCurso = 'Todos';
+      _selectedPlan = 'Todos';
+      _selectedMetodoPago = 'Todos';
+      _selectedEstado = 'Todos';
+    });
+  }
 
-// ============ WIDGET DE FILTROS ============
-Widget _buildFiltros() {
-  return Card(
-    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        children: [
-          // Barra de búsqueda
-          TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              hintText: '🔍 Buscar por nombre o apellido...',
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.clear),
-                onPressed: () {
-                  setState(() {
-                    _searchController.clear();
-                  });
-                },
-              ),
-            ),
-            onChanged: (value) => setState(() {}),
-          ),
-          
-          const SizedBox(height: 10),
-          
-          // Filtros en fila
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              // Filtro por Curso
-              _buildFiltroDropdown(
-                value: _selectedCurso,
-                items: _cursos,
-                hint: '🎓 Curso',
-                onChanged: (value) => setState(() => _selectedCurso = value!),
-              ),
-              
-              // Filtro por Plan
-              _buildFiltroDropdown(
-                value: _selectedPlan,
-                items: _planes,
-                hint: '📋 Plan',
-                onChanged: (value) => setState(() => _selectedPlan = value!),
-              ),
-              
-              // Filtro por Método de Pago
-              _buildFiltroDropdown(
-                value: _selectedMetodoPago,
-                items: _metodosPago,
-                hint: '💰 Pago',
-                onChanged: (value) => setState(() => _selectedMetodoPago = value!),
-              ),
-              
-              // Filtro por Estado
-              _buildFiltroDropdown(
-                value: _selectedEstado,
-                items: ['Todos', 'Activo', 'Por vencer', 'Vencido'],
-                hint: '🟢 Estado',
-                onChanged: (value) => setState(() => _selectedEstado = value!),
-              ),
-              
-              // Botón limpiar filtros
-              OutlinedButton.icon(
-                onPressed: _limpiarFiltros,
-                icon: const Icon(Icons.clear_all, size: 16),
-                label: const Text('Limpiar'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.grey,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-// ============ WIDGET PARA DROPDOWN DE FILTROS ============
-Widget _buildFiltroDropdown({
-  required String value,
-  required List<String> items,
-  required String hint,
-  required Function(String?) onChanged,
-}) {
-  return Container(
-    constraints: const BoxConstraints(minWidth: 120),
-    child: DropdownButton<String>(
-      value: value,
-      isDense: true,
-      hint: Text(hint),
-      items: items.map((String value) {
-        return DropdownMenuItem<String>(
-          value: value,
-          child: Text(
-            value.length > 15 ? '${value.substring(0, 15)}...' : value,
-            style: const TextStyle(fontSize: 12),
-          ),
-        );
-      }).toList(),
-      onChanged: onChanged,
-    ),
-  );
-}
-
-// ============ INDICADOR DE FILTROS ACTIVOS ============
-Widget _buildIndicadorFiltros(int totalFiltrados, int totalGeneral) {
-  final tieneFiltros = _selectedCurso != 'Todos' ||
-      _selectedPlan != 'Todos' ||
-      _selectedMetodoPago != 'Todos' ||
-      _selectedEstado != 'Todos' ||
-      _searchController.text.isNotEmpty;
-
-  if (!tieneFiltros) return const SizedBox();
-
-  return Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 16),
-    child: Row(
-      children: [
-        Chip(
-          backgroundColor: Colors.blue[50],
-          label: Text(
-            '$totalFiltrados de $totalGeneral alumnos',
-            style: const TextStyle(fontSize: 12),
-          ),
-        ),
-        const SizedBox(width: 8),
-        const Icon(Icons.filter_alt, size: 16, color: Colors.blue),
-        const SizedBox(width: 4),
-        const Text(
-          'Filtros activos',
-          style: TextStyle(fontSize: 12, color: Colors.blue),
-        ),
-      ],
-    ),
-  );
-}
-
-// ============ VISTA CUANDO NO HAY RESULTADOS ============
-Widget _buildVistaSinResultados() {
-  return Center(
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const Icon(Icons.search_off, size: 64, color: Colors.grey),
-        const SizedBox(height: 16),
-        const Text(
-          'No se encontraron alumnos',
-          style: TextStyle(fontSize: 18, color: Colors.grey),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Ajusta los filtros o busca con otros términos',
-          style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-        ),
-        const SizedBox(height: 16),
-        ElevatedButton(
-          onPressed: _limpiarFiltros,
-          child: const Text('Limpiar filtros'),
-        ),
-      ],
-    ),
-  );
-}
-
-
-// ============ MÉTODO UNIFICADO PARA TODAS LAS PLATAFORMAS ============
-Future<void> _exportarAlumnosExcel() async {
-  try {
-    // Mostrar loading
+  // ============ MÉTODO UNIFICADO MEJORADO PARA EXPORTACIÓN ============
+  Future<void> _exportarAlumnosExcel() async {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -338,186 +218,337 @@ Future<void> _exportarAlumnosExcel() async {
         content: Row(
           children: [
             CircularProgressIndicator(),
-            SizedBox(width: 20),
-            Text('Generando archivo Excel...'),
+            SizedBox(width: 16),
+            Text('Exportando datos...'),
           ],
         ),
       ),
     );
 
-    // Obtener todos los alumnos
-    final querySnapshot = await FirebaseFirestore.instance
-        .collection('alumnos')
-        .get();
+    try {
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('alumnos')
+          .get();
 
-    if (querySnapshot.docs.isEmpty) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No hay alumnos para exportar')),
-      );
-      return;
-    }
-
-    // Crear contenido CSV
-    String csvContent = 'N°;Nombre;Apellido;DNI;Edad;Celular;Correo;Dirección;Curso;Plan;Turno;Promoción;Método Pago;Monto Pagado;Fecha Inicio;Fecha Fin;Estado;Es Menor Edad;Apoderado;DNI Apoderado;Celular Apoderado\n';
-    
-    int contador = 1;
-    for (var doc in querySnapshot.docs) {
-      final data = doc.data();
-      
-      // Manejar fechas de forma segura
-      String fechaInicioStr = 'N/A';
-      String fechaFinStr = 'N/A';
-      
-      try {
-        if (data['fecha_inicio'] != null) {
-          final fechaInicio = (data['fecha_inicio'] as Timestamp).toDate();
-          fechaInicioStr = DateFormat('dd/MM/yyyy').format(fechaInicio);
-        }
-        if (data['fecha_fin'] != null) {
-          final fechaFin = (data['fecha_fin'] as Timestamp).toDate();
-          fechaFinStr = DateFormat('dd/MM/yyyy').format(fechaFin);
-        }
-      } catch (e) {
-        print('Error procesando fechas: $e');
-      }
-
-      // Escapar texto para CSV
-      String escapeCsv(String text) {
-        final textStr = text.toString();
-        if (textStr.contains(';') || textStr.contains('"') || textStr.contains('\n')) {
-          return '"${textStr.replaceAll('"', '""')}"';
-        }
-        return textStr;
-      }
-
-      csvContent += 
-        '${contador++};'
-        '${escapeCsv(data['nombre']?.toString() ?? '')};'
-        '${escapeCsv(data['apellido']?.toString() ?? '')};'
-        '${escapeCsv(data['dni']?.toString() ?? '')};'
-        '${escapeCsv(data['edad']?.toString() ?? '')};'
-        '${escapeCsv(data['celular']?.toString() ?? '')};'
-        '${escapeCsv(data['correo']?.toString() ?? '')};'
-        '${escapeCsv(data['direccion']?.toString() ?? '')};'
-        '${escapeCsv(data['curso']?.toString() ?? '')};'
-        '${escapeCsv(data['plan']?.toString() ?? '')};'
-        '${escapeCsv(data['turno']?.toString() ?? '')};'
-        '${escapeCsv(data['promocion']?.toString() ?? '')};'
-        '${escapeCsv(data['metodo_pago']?.toString() ?? 'Efectivo')};'
-        '${data['monto_pagado']?.toString() ?? '0'};'
-        '$fechaInicioStr;'
-        '$fechaFinStr;'
-        '${escapeCsv(data['estado']?.toString() ?? 'Activo')};'
-        '${data['es_menor_edad'] == true ? 'Sí' : 'No'};'
-        '${escapeCsv(data['apoderado']?.toString() ?? '')};'
-        '${escapeCsv(data['dni_apoderado']?.toString() ?? '')};'
-        '${escapeCsv(data['celular_apoderado']?.toString() ?? '')}\n';
-    }
-
-    // Cerrar loading
-    Navigator.pop(context);
-
-    // ============ DETECTAR PLATAFORMA Y EXPORTAR ============
-    if (kIsWeb) {
-      // ============ SOLUCIÓN PARA WEB ============
-      _exportarEnWeb(csvContent, contador - 1);
-    } else if (Platform.isAndroid || Platform.isIOS) {
-      // ============ SOLUCIÓN PARA MÓVIL ============
-      _exportarEnMovil(csvContent, contador - 1);
-    } else {
-      // ============ SOLUCIÓN PARA DESKTOP ============
-      _exportarEnDesktop(csvContent, contador - 1);
-    }
-
-  } catch (e) {
-    // Cerrar loading en caso de error
-    if (Navigator.canPop(context)) {
-      Navigator.pop(context);
-    }
-    
-    print('❌ Error exportando: $e');
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Error al exportar: $e'),
-        duration: const Duration(seconds: 5),
-      ),
-    );
-  }
-}
-
-// ============ MÉTODO PARA WEB ============
-void _exportarEnWeb(String csvContent, int totalAlumnos) {
-  try {
-    // Crear blob y descargar
-    final bytes = utf8.encode(csvContent);
-    final blob = html.Blob([bytes], 'text/csv;charset=utf-8');
-    final url = html.Url.createObjectUrlFromBlob(blob);
-    
-    final anchor = html.AnchorElement(href: url)
-      ..setAttribute('download', 'alumnos_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.csv')
-      ..click();
-    
-    html.Url.revokeObjectUrl(url);
-
-    // Mostrar éxito
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('✅ Descargando CSV con $totalAlumnos alumnos...'),
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  } catch (e) {
-    // Fallback: mostrar datos para copiar
-    _mostrarDatosParaCopiar(csvContent, totalAlumnos);
-  }
-}
-
-// ============ MÉTODO PARA MÓVIL ============
-Future<void> _exportarEnMovil(String csvContent, int totalAlumnos) async {
-  try {
-    // Solicitar permisos en Android
-    if (Platform.isAndroid) {
-      final status = await Permission.storage.request();
-      if (!status.isGranted) {
+      if (querySnapshot.docs.isEmpty) {
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Permisos de almacenamiento denegados')),
+          const SnackBar(content: Text('No hay alumnos para exportar')),
         );
         return;
       }
+
+      String csvContent = 'N°;Nombre;Apellido;DNI;Edad;Celular;Correo;Dirección;Curso;Plan;Turno;Promoción;Método Pago;Monto Pagado;Fecha Inicio;Fecha Fin;Estado;Es Menor Edad;Apoderado;DNI Apoderado;Celular Apoderado\n';
+      
+      int contador = 1;
+      for (var doc in querySnapshot.docs) {
+        final data = doc.data();
+        
+        String fechaInicioStr = 'N/A';
+        String fechaFinStr = 'N/A';
+        
+        try {
+          if (data['fecha_inicio'] != null) {
+            final fechaInicio = (data['fecha_inicio'] as Timestamp).toDate();
+            fechaInicioStr = DateFormat('dd/MM/yyyy').format(fechaInicio);
+          }
+          if (data['fecha_fin'] != null) {
+            final fechaFin = (data['fecha_fin'] as Timestamp).toDate();
+            fechaFinStr = DateFormat('dd/MM/yyyy').format(fechaFin);
+          }
+        } catch (e) {
+          print('Error procesando fechas: $e');
+        }
+
+        String escapeCsv(String text) {
+          final textStr = text.toString();
+          if (textStr.contains(';') || textStr.contains('"') || textStr.contains('\n')) {
+            return '"${textStr.replaceAll('"', '""')}"';
+          }
+          return textStr;
+        }
+
+        csvContent += 
+          '${contador++};'
+          '${escapeCsv(data['nombre']?.toString() ?? '')};'
+          '${escapeCsv(data['apellido']?.toString() ?? '')};'
+          '${escapeCsv(data['dni']?.toString() ?? '')};'
+          '${escapeCsv(data['edad']?.toString() ?? '')};'
+          '${escapeCsv(data['celular']?.toString() ?? '')};'
+          '${escapeCsv(data['correo']?.toString() ?? '')};'
+          '${escapeCsv(data['direccion']?.toString() ?? '')};'
+          '${escapeCsv(data['curso']?.toString() ?? '')};'
+          '${escapeCsv(data['plan']?.toString() ?? '')};'
+          '${escapeCsv(data['turno']?.toString() ?? '')};'
+          '${escapeCsv(data['promocion']?.toString() ?? '')};'
+          '${escapeCsv(data['metodo_pago']?.toString() ?? 'Efectivo')};'
+          '${data['monto_pagado']?.toString() ?? '0'};'
+          '$fechaInicioStr;'
+          '$fechaFinStr;'
+          '${escapeCsv(data['estado']?.toString() ?? 'Activo')};'
+          '${data['es_menor_edad'] == true ? 'Sí' : 'No'};'
+          '${escapeCsv(data['apoderado']?.toString() ?? '')};'
+          '${escapeCsv(data['dni_apoderado']?.toString() ?? '')};'
+          '${escapeCsv(data['celular_apoderado']?.toString() ?? '')}\n';
+      }
+
+      Navigator.pop(context);
+
+      if (kIsWeb) {
+        await _exportarEnWeb(csvContent, contador - 1);
+      } else if (Platform.isAndroid || Platform.isIOS) {
+        await _exportarEnMovil(csvContent, contador - 1);
+      } else {
+        await _exportarEnDesktop(csvContent, contador - 1);
+      }
+
+    } catch (e) {
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+      
+      print('❌ Error exportando: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al exportar: $e'),
+          duration: const Duration(seconds: 5),
+        ),
+      );
     }
+  }
 
-    Directory directory;
-    String rutaAmigable = '';
-    
-    if (Platform.isAndroid) {
-      directory = (await getDownloadsDirectory()) ?? await getApplicationDocumentsDirectory();
-      rutaAmigable = 'Descargas';
-    } else {
-      directory = await getApplicationDocumentsDirectory();
-      rutaAmigable = 'Documentos';
+  // ============ MÉTODO PARA WEB CORREGIDO ============
+  Future<void> _exportarEnWeb(String csvContent, int totalAlumnos) async {
+    try {
+      final bytes = utf8.encode(csvContent);
+      final base64 = base64Encode(bytes);
+      final dataUrl = 'data:text/csv;base64,$base64';
+      
+      final encodedUri = Uri.encodeFull(dataUrl);
+      final success = await launchUrlString(
+        encodedUri,
+        mode: LaunchMode.externalApplication,
+      );
+      
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Descargando CSV con $totalAlumnos alumnos...'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } else {
+        throw Exception('No se pudo iniciar la descarga');
+      }
+      
+    } catch (e) {
+      print('Error en exportación web: $e');
+      _mostrarDatosParaCopiar(csvContent, totalAlumnos);
     }
+  }
 
-    final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-    final fileName = 'alumnos_$timestamp.csv';
-    final file = File('${directory.path}/$fileName');
-    
-    await file.writeAsString(csvContent, flush: true);
+  // ============ MÉTODO PARA MÓVIL ============
+  Future<void> _exportarEnMovil(String csvContent, int totalAlumnos) async {
+    try {
+      final tienePermisos = await _verificarPermisosAlmacenamiento();
+      if (!tienePermisos) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Se necesitan permisos de almacenamiento para exportar'),
+          ),
+        );
+        return;
+      }
 
-    // Mostrar diálogo de éxito
+      Directory directory;
+      String rutaAmigable = '';
+      
+      if (Platform.isAndroid) {
+        directory = (await getExternalStorageDirectory()) ?? await getApplicationDocumentsDirectory();
+        rutaAmigable = 'Almacenamiento interno/Download';
+      } else {
+        directory = await getApplicationDocumentsDirectory();
+        rutaAmigable = 'Archivos de la App';
+      }
+
+      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final fileName = 'alumnos_$timestamp.csv';
+      final file = File('${directory.path}/$fileName');
+      
+      await file.writeAsString(csvContent, flush: true);
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('✅ Exportación Exitosa'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Alumnos exportados: $totalAlumnos'),
+              const SizedBox(height: 8),
+              Text('Archivo: $fileName'),
+              const SizedBox(height: 8),
+              const Text(
+                '💡 El archivo se guardó en la carpeta de Descargas',
+                style: TextStyle(fontSize: 12, color: Colors.blue),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cerrar'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _compartirArchivo(file);
+              },
+              child: const Text('Compartir'),
+            ),
+          ],
+        ),
+      );
+
+    } catch (e) {
+      print('Error en exportación móvil: $e');
+      _mostrarDatosParaCopiar(csvContent, totalAlumnos);
+    }
+  }
+
+  // ============ MÉTODO PARA DESKTOP ============
+  Future<void> _exportarEnDesktop(String csvContent, int totalAlumnos) async {
+    try {
+      final directory = await getDownloadsDirectory();
+      
+      if (directory == null) {
+        throw Exception('No se pudo acceder al directorio de descargas');
+      }
+
+      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final file = File('${directory.path}/alumnos_$timestamp.csv');
+      
+      await file.writeAsString(csvContent, flush: true);
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('✅ Exportación Exitosa'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Alumnos exportados: $totalAlumnos'),
+              const SizedBox(height: 8),
+              Text('Archivo: ${file.path}'),
+              const SizedBox(height: 8),
+              const Text(
+                '💡 El archivo se guardó en tu carpeta de Descargas',
+                style: TextStyle(fontSize: 12, color: Colors.green),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cerrar'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                OpenFile.open(file.path);
+              },
+              child: const Text('Abrir Archivo'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _compartirArchivo(file);
+              },
+              child: const Text('Compartir'),
+            ),
+          ],
+        ),
+      );
+
+    } catch (e) {
+      print('Error en exportación desktop: $e');
+      
+      try {
+        final directory = await getApplicationDocumentsDirectory();
+        final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+        final file = File('${directory.path}/alumnos_$timestamp.csv');
+        
+        await file.writeAsString(csvContent, flush: true);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Archivo guardado en: ${file.path}'),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      } catch (fallbackError) {
+        print('Error en fallback: $fallbackError');
+        _mostrarDatosParaCopiar(csvContent, totalAlumnos);
+      }
+    }
+  }
+
+  Future<void> _compartirArchivo(File file) async {
+    try {
+      if (kIsWeb) {
+        // Para web, usar un enfoque diferente
+        final bytes = await file.readAsBytes();
+        final base64 = base64Encode(bytes);
+        final dataUrl = 'data:text/csv;base64,$base64';
+        final encodedUri = Uri.encodeFull(dataUrl);
+        await launchUrlString(encodedUri);
+      } else {
+        // Para móvil/desktop
+        final xFile = XFile(file.path);
+        await Share.shareXFiles([xFile], text: 'Exportación de Alumnos - Academia Tigre Azul');
+      }
+    } catch (e) {
+      print('Error compartiendo archivo: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error al compartir el archivo')),
+      );
+    }
+  }
+
+  void _mostrarDatosParaCopiar(String csvContent, int totalAlumnos) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('✅ Exportación Exitosa'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Alumnos exportados: $totalAlumnos'),
-            const SizedBox(height: 10),
-            Text('Archivo: $fileName'),
-            Text('Ubicación: $rutaAmigable'),
-          ],
+        title: const Text('📋 Datos para Exportar'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Total alumnos: $totalAlumnos'),
+              const SizedBox(height: 10),
+              const Text('Copia los datos y pégalos en Excel:'),
+              const SizedBox(height: 10),
+              Container(
+                width: double.maxFinite,
+                height: 200,
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey),
+                  borderRadius: BorderRadius.circular(8),
+                  color: Colors.grey[100],
+                ),
+                child: SingleChildScrollView(
+                  child: SelectableText(
+                    csvContent,
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 10),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -526,94 +557,18 @@ Future<void> _exportarEnMovil(String csvContent, int totalAlumnos) async {
           ),
           ElevatedButton(
             onPressed: () {
+              Clipboard.setData(ClipboardData(text: csvContent));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('✅ Datos copiados al portapapeles')),
+              );
               Navigator.pop(context);
-              OpenFile.open(file.path);
             },
-            child: const Text('Abrir Archivo'),
+            child: const Text('Copiar Datos'),
           ),
         ],
       ),
     );
-
-  } catch (e) {
-    // Fallback para móvil
-    _mostrarDatosParaCopiar(csvContent, totalAlumnos);
   }
-}
-
-// ============ MÉTODO PARA DESKTOP ============
-Future<void> _exportarEnDesktop(String csvContent, int totalAlumnos) async {
-  try {
-    final directory = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
-    final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-    final file = File('${directory!.path}/alumnos_$timestamp.csv');
-    
-    await file.writeAsString(csvContent, flush: true);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('✅ Archivo guardado en: ${file.path}'),
-        duration: const Duration(seconds: 5),
-      ),
-    );
-  } catch (e) {
-    _mostrarDatosParaCopiar(csvContent, totalAlumnos);
-  }
-}
-
-// ============ MÉTODO DE FALLBACK ============
-void _mostrarDatosParaCopiar(String csvContent, int totalAlumnos) {
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('📋 Datos para Exportar'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Total alumnos: $totalAlumnos'),
-            const SizedBox(height: 10),
-            const Text('Copia los datos y pégalos en Excel:'),
-            const SizedBox(height: 10),
-            Container(
-              width: double.maxFinite,
-              height: 200,
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey),
-                borderRadius: BorderRadius.circular(8),
-                color: Colors.grey[100],
-              ),
-              child: SingleChildScrollView(
-                child: SelectableText(
-                  csvContent,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 10),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cerrar'),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            Clipboard.setData(ClipboardData(text: csvContent));
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('✅ Datos copiados al portapapeles')),
-            );
-            Navigator.pop(context);
-          },
-          child: const Text('Copiar Datos'),
-        ),
-      ],
-    ),
-  );
-}
 
   // ============ NUEVO: MOSTRAR HISTORIAL COMPLETO ============
   Future<void> _mostrarHistorialCompleto(String alumnoId, String nombreAlumno) async {
@@ -683,31 +638,29 @@ void _mostrarDatosParaCopiar(String csvContent, int totalAlumnos) {
   }
 
   // ============ NUEVO: RESUMEN DEL PERFIL PARA HISTORIAL ============
-  // ============ MÉTODO CORREGIDO ============
-Widget _buildResumenPerfil(Map<String, dynamic> perfil) {
+ Widget _buildResumenPerfil(Map<String, dynamic> perfil) {
   final peso = perfil['peso']?.toDouble() ?? 0;
   final altura = perfil['altura']?.toDouble() ?? 0;
   
-  // Calcular IMC
   double alturaCm = altura < 3 ? altura * 100 : altura;
   final imc = peso / ((alturaCm / 100) * (alturaCm / 100));
   
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      // Medidas básicas
       Text('⚖️ Peso: $peso kg'),
       Text('📏 Altura: ${alturaCm.toStringAsFixed(0)} cm'),
       Text('🧮 IMC: ${imc.toStringAsFixed(1)}'),
       
-      // Peso objetivo si existe
       if (perfil['pesoObjetivo'] != null && perfil['pesoObjetivo'] > 0)
         Text('🎯 Objetivo: ${perfil['pesoObjetivo']} kg'),
       
-      // Mostrar medidas corporales específicas
+      // NUEVO: Mostrar niveles en el historial
+      if (perfil['niveles_registrados'] != null)
+        _buildNivelesHistorial(perfil['niveles_registrados']),
+      
       ..._buildMedidasEspecificas(perfil),
       
-      // Observaciones específicas
       if (perfil['observaciones'] != null && perfil['observaciones'].isNotEmpty)
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -722,34 +675,118 @@ Widget _buildResumenPerfil(Map<String, dynamic> perfil) {
   );
 }
 
-// ============ NUEVO MÉTODO PARA MOSTRAR MEDIDAS ESPECÍFICAS ============
-List<Widget> _buildMedidasEspecificas(Map<String, dynamic> perfil) {
-  final List<Widget> medidas = [];
-  final Map<String, String> labels = {
-    'cintura': '📐 Cintura',
-    'pecho': '💪 Pecho', 
-    'espalda': '🔙 Espalda',
-    'hombros': '👤 Hombros',
-    'brazo': '💪 Brazo',
-    'pierna': '🦵 Pierna',
-  };
-
-  bool tieneMedidas = false;
-
-  labels.forEach((key, label) {
-    if (perfil[key] != null && perfil[key] > 0) {
-      if (!tieneMedidas) {
-        medidas.add(const SizedBox(height: 4));
-        medidas.add(const Text('📊 Medidas:', 
-            style: TextStyle(fontWeight: FontWeight.bold)));
-        tieneMedidas = true;
-      }
-      medidas.add(Text('$label: ${perfil[key]} cm'));
+Widget _buildNivelesHistorial(Map<String, dynamic> niveles) {
+  final List<Widget> nivelesWidgets = [];
+  
+  void agregarNivel(String arte, String nivel) {
+    if (nivel != null && nivel.isNotEmpty) {
+      // ✅ MOSTRAR TODOS LOS NIVELES
+      nivelesWidgets.add(
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: _obtenerColorCinturon(nivel).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: _obtenerColorCinturon(nivel), width: 0.5),
+          ),
+          child: Text(
+            '$arte: $nivel',
+            style: TextStyle(
+              fontSize: 9,
+              color: _obtenerColorCinturon(nivel),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      );
     }
-  });
+  }
 
-  return medidas;
+  agregarNivel('Jiu Jitsu', niveles['jiujitsu']);
+  agregarNivel('MMA', niveles['mma']);
+  agregarNivel('Box', niveles['box']);
+  agregarNivel('Muay Thai', niveles['muay_thai']);
+  agregarNivel('Sanda', niveles['sanda']);
+
+  if (nivelesWidgets.isEmpty) {
+    return const SizedBox();
+  }
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const SizedBox(height: 4),
+      const Text(
+        '🎯 Niveles:',
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+      ),
+      const SizedBox(height: 4),
+      Wrap(
+        spacing: 6,
+        runSpacing: 4,
+        children: nivelesWidgets,
+      ),
+      const SizedBox(height: 4),
+    ],
+  );
 }
+// ============ NUEVO: FUNCIÓN PARA OBTENER COLOR DEL CINTURÓN ============
+Color _obtenerColorCinturon(String cinturon) {
+  switch (cinturon.toLowerCase()) {
+    case 'blanco':
+      return Colors.grey[300]!;
+    case 'azul':
+      return Colors.blue;
+    case 'morado':
+      return Colors.purple;
+    case 'marrón':
+      return Colors.brown;
+    case 'negro':
+      return Colors.grey[900]!;
+    case 'amarillo':
+      return Colors.yellow[700]!;
+    case 'verde':
+      return Colors.green;
+    case 'rojo':
+      return Colors.red;
+    case 'intermedio':
+      return Colors.orange;
+    case 'avanzado':
+      return Colors.red;
+    default:
+      return Colors.grey;
+  }
+}
+
+  // ============ NUEVO MÉTODO PARA MOSTRAR MEDIDAS ESPECÍFICAS ============
+  List<Widget> _buildMedidasEspecificas(Map<String, dynamic> perfil) {
+    final List<Widget> medidas = [];
+    final Map<String, String> labels = {
+      'cintura': '📐 Cintura',
+      'pecho': '💪 Pecho', 
+      'espalda': '🔙 Espalda',
+      'hombros': '👤 Hombros',
+      'brazo': '💪 Brazo',
+      'pierna': '🦵 Pierna',
+    };
+
+    bool tieneMedidas = false;
+
+    labels.forEach((key, label) {
+      if (perfil[key] != null && perfil[key] > 0) {
+        if (!tieneMedidas) {
+          medidas.add(const SizedBox(height: 4));
+          medidas.add(const Text('📊 Medidas:', 
+              style: TextStyle(fontWeight: FontWeight.bold)));
+          tieneMedidas = true;
+        }
+        medidas.add(Text('$label: ${perfil[key]} cm'));
+      }
+    });
+
+    return medidas;
+  }
+
   // ============ NUEVO: CONTAR MEDIDAS CORPORALES ============
   int _contarMedidasCorporales(Map<String, dynamic> perfil) {
     int count = 0;
@@ -774,50 +811,107 @@ List<Widget> _buildMedidasEspecificas(Map<String, dynamic> perfil) {
   }
 
   // Widget para mostrar el perfil físico
-  Widget _buildPerfilFisico(String alumnoId) {
-    final perfilData = _perfilesCache[alumnoId];
-    
-    if (perfilData == null) {
-      return const Text(
-        '📝 Sin perfil físico',
-        style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic),
-      );
-    }
-
-    final peso = perfilData['peso']?.toDouble() ?? 0.0;
-    final altura = perfilData['altura']?.toDouble() ?? 0.0;
-
-    if (peso <= 0 || altura <= 0) {
-      return const Text(
-        '📝 Perfil incompleto',
-        style: TextStyle(fontSize: 11, color: Colors.orange),
-      );
-    }
-
-    // Convertir altura a cm si está en metros
-    double alturaCm = altura;
-    if (altura < 3) {
-      alturaCm = altura * 100;
-    }
-
-    final imc = peso / ((alturaCm / 100) * (alturaCm / 100));
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 4),
-        Text(
-          '⚖️ $peso kg • 📏 ${alturaCm.toStringAsFixed(0)} cm • 🧮 IMC: ${imc.toStringAsFixed(1)}',
-          style: const TextStyle(fontSize: 12, color: Colors.green),
-        ),
-        if (perfilData['pesoObjetivo'] != null)
-          Text(
-            '🎯 Objetivo: ${perfilData['pesoObjetivo']} kg',
-            style: const TextStyle(fontSize: 10, color: Colors.blue),
-          ),
-      ],
+  // Widget para mostrar el perfil físico MEJORADO CON NIVELES
+Widget _buildPerfilFisico(String alumnoId) {
+  final perfilData = _perfilesCache[alumnoId];
+  
+  if (perfilData == null) {
+    return const Text(
+      '📝 Sin perfil físico',
+      style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic),
     );
   }
+
+  final peso = perfilData['peso']?.toDouble() ?? 0.0;
+  final altura = perfilData['altura']?.toDouble() ?? 0.0;
+
+  if (peso <= 0 || altura <= 0) {
+    return const Text(
+      '📝 Perfil incompleto',
+      style: TextStyle(fontSize: 11, color: Colors.orange),
+    );
+  }
+
+  double alturaCm = altura;
+  if (altura < 3) {
+    alturaCm = altura * 100;
+  }
+
+  final imc = peso / ((alturaCm / 100) * (alturaCm / 100));
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const SizedBox(height: 4),
+      Text(
+        '⚖️ $peso kg • 📏 ${alturaCm.toStringAsFixed(0)} cm • 🧮 IMC: ${imc.toStringAsFixed(1)}',
+        style: const TextStyle(fontSize: 12, color: Colors.green),
+      ),
+      
+      // NUEVO: Mostrar niveles si existen en el perfil
+      if (perfilData['niveles_registrados'] != null) 
+        _buildNivelesPerfilCompacto(perfilData['niveles_registrados']),
+      
+      if (perfilData['pesoObjetivo'] != null)
+        Text(
+          '🎯 Objetivo: ${perfilData['pesoObjetivo']} kg',
+          style: const TextStyle(fontSize: 10, color: Colors.blue),
+        ),
+    ],
+  );
+}
+
+
+// ============ NUEVO: NIVELES COMPACTOS PARA LISTA ============
+Widget _buildNivelesPerfilCompacto(Map<String, dynamic> niveles) {
+  final List<Widget> badges = [];
+  
+  void agregarBadge(String arte, String nivel) {
+    if (nivel != null && nivel.isNotEmpty) {
+      // ✅ MOSTRAR TODOS LOS NIVELES, INCLUYENDO PRINCIPIANTE Y BLANCO
+      badges.add(
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: _obtenerColorCinturon(nivel).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: _obtenerColorCinturon(nivel), width: 0.5),
+          ),
+          child: Text(
+            '$arte: $nivel',
+            style: TextStyle(
+              fontSize: 9,
+              color: _obtenerColorCinturon(nivel),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
+  agregarBadge('Jiu Jitsu', niveles['jiujitsu']);
+  agregarBadge('MMA', niveles['mma']);
+  agregarBadge('Box', niveles['box']);
+  agregarBadge('Muay Thai', niveles['muay_thai']);
+  agregarBadge('Sanda', niveles['sanda']);
+
+  if (badges.isEmpty) {
+    return const SizedBox();
+  }
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const SizedBox(height: 4),
+      Wrap(
+        spacing: 6,
+        runSpacing: 4,
+        children: badges,
+      ),
+    ],
+  );
+}
 
   // Función para mostrar opciones en un menú emergente
   void _mostrarMenuOpciones(BuildContext context, String alumnoId, Map<String, dynamic> data, DocumentSnapshot doc) {
@@ -845,6 +939,29 @@ List<Widget> _buildMedidasEspecificas(Map<String, dynamic> perfil) {
                   launchUrlString(url, mode: LaunchMode.externalApplication);
                 },
               ),
+
+// En el método _mostrarMenuOpciones, agrega:
+ListTile(
+  leading: const Icon(Icons.autorenew, color: Colors.green),
+  title: const Text('Renovar Mensualidad'),
+  onTap: () {
+    Navigator.pop(context);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RenovarMensualidadScreen(
+          alumnoId: doc.id,
+          alumnoData: data,
+        ),
+      ),
+    ).then((_) {
+      // Recargar datos después de renovar
+      _cargarPerfilesFisicos();
+    });
+  },
+),
+
+
               // Generar PDF
               ListTile(
                 leading: const Icon(Icons.print, color: Colors.black),
@@ -930,7 +1047,7 @@ List<Widget> _buildMedidasEspecificas(Map<String, dynamic> perfil) {
                   });
                 },
               ),
-              // ============ NUEVO: HISTORIAL PERFIL FÍSICO ============
+              // Historial Perfil Físico
               ListTile(
                 leading: const Icon(Icons.timeline, color: Colors.green),
                 title: const Text('Historial Perfil Físico'),
@@ -970,7 +1087,6 @@ List<Widget> _buildMedidasEspecificas(Map<String, dynamic> perfil) {
     final fechaFin = tsFin?.toDate() ?? DateTime.now();
     final estado = data['estado'] ?? FirestoreService.calcularEstado(fechaFin);
 
-    // Cargar perfil físico para mostrar en el diálogo
     final perfilData = _perfilesCache[data['id'] ?? ''];
 
     showDialog(
@@ -982,7 +1098,6 @@ List<Widget> _buildMedidasEspecificas(Map<String, dynamic> perfil) {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Información personal
               const Text('INFORMACIÓN PERSONAL', style: TextStyle(fontWeight: FontWeight.bold)),
               Text('Edad: ${data['edad'] ?? ''} años'),
               Text('DNI: ${data['dni'] ?? ''}'),
@@ -1012,7 +1127,6 @@ List<Widget> _buildMedidasEspecificas(Map<String, dynamic> perfil) {
               Text('Fecha fin: ${DateFormat('dd/MM/yyyy').format(fechaFin)}'),
               Text('Estado: $estado'),
               
-              // PERFIL FÍSICO si existe
               if (perfilData != null) ...[
                 const SizedBox(height: 8),
                 const Text('PERFIL FÍSICO', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -1040,7 +1154,6 @@ List<Widget> _buildMedidasEspecificas(Map<String, dynamic> perfil) {
     
     final List<Widget> medidas = [];
     
-    // Medidas básicas
     medidas.add(Text('Peso: $peso kg'));
     medidas.add(Text('Altura: ${alturaCm.toStringAsFixed(0)} cm'));
     medidas.add(Text('IMC: ${imc.toStringAsFixed(1)}'));
@@ -1049,7 +1162,6 @@ List<Widget> _buildMedidasEspecificas(Map<String, dynamic> perfil) {
       medidas.add(Text('Objetivo: ${perfilData['pesoObjetivo']} kg'));
     }
     
-    // Medidas corporales
     if (perfilData['cintura'] != null && perfilData['cintura'] > 0) {
       medidas.add(Text('Cintura: ${perfilData['cintura']} cm'));
     }
@@ -1069,7 +1181,6 @@ List<Widget> _buildMedidasEspecificas(Map<String, dynamic> perfil) {
       medidas.add(Text('Pierna: ${perfilData['pierna']} cm'));
     }
     
-    // Observaciones
     if (perfilData['observaciones'] != null && perfilData['observaciones'].isNotEmpty) {
       medidas.add(Text('Observaciones: ${perfilData['observaciones']}'));
     }
@@ -1111,136 +1222,623 @@ List<Widget> _buildMedidasEspecificas(Map<String, dynamic> perfil) {
   }
 
   @override
-Widget build(BuildContext context) {
-  return Scaffold(
-    appBar: AppBar(
-      title: const Text('Alumnos'),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.add),
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const AddAlumnoScreen()),
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Column(
+        children: [
+          // HEADER CON ACCIONES
+          _buildHeader(),
+          
+          // FILTROS MEJORADOS
+          _buildFiltrosMejorados(),
+          
+          // INDICADOR DE RESULTADOS
+          _buildIndicadorResultados(),
+          
+          // LISTA DE ALUMNOS
+          Expanded(
+            child: _buildListaAlumnos(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.blue.shade700, Colors.blue.shade900],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(20),
+          bottomRight: Radius.circular(20),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Título y descripción
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.people, color: Colors.white, size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      '',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  '',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          // Botones de acción
+          Row(
+            children: [
+              _buildBotonAccion(
+                icon: Icons.add,
+                label: 'Nuevo',
+                color: Colors.green,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AddAlumnoScreen()),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _buildBotonAccion(
+                icon: Icons.refresh,
+                label: 'Actualizar',
+                color: Colors.blue,
+                onTap: () {
+                  _cargarPerfilesFisicos();
+                  _cargarOpcionesFiltros();
+                },
+              ),
+              const SizedBox(width: 8),
+              _buildBotonAccion(
+                icon: Icons.file_download,
+                label: 'Exportar',
+                color: Colors.orange,
+                onTap: _exportarAlumnosExcel,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBotonAccion({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      width: 100,
+      child: ElevatedButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, size: 16),
+        label: Text(label, style: TextStyle(fontSize: 12)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
           ),
         ),
-        IconButton(
-          icon: const Icon(Icons.refresh),
-          onPressed: () {
-            _cargarPerfilesFisicos();
-            _cargarOpcionesFiltros();
-          },
-          tooltip: 'Actualizar perfiles físicos',
+      ),
+    );
+  }
+
+  Widget _buildFiltrosMejorados() {
+    return Card(
+      margin: const EdgeInsets.all(16),
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            // Barra de búsqueda
+            TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: '🔍 Buscar alumno por nombre o apellido...',
+                filled: true,
+                fillColor: Colors.grey.shade50,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          setState(() {
+                            _searchController.clear();
+                          });
+                        },
+                      )
+                    : null,
+              ),
+              onChanged: (value) => setState(() {}),
+            ),
+            
+            const SizedBox(height: 12),
+            
+            // Botón para expandir/contraer filtros
+            Row(
+              children: [
+                const Icon(Icons.filter_alt, size: 18, color: Colors.blue),
+                const SizedBox(width: 8),
+                const Text('Filtros Avanzados', 
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+                const Spacer(),
+                IconButton(
+                  icon: Icon(
+                    _filtrosExpandidos ? Icons.expand_less : Icons.expand_more,
+                    color: Colors.blue,
+                  ),
+                  onPressed: () => setState(() => _filtrosExpandidos = !_filtrosExpandidos),
+                ),
+              ],
+            ),
+            
+            // Filtros expandibles
+            if (_filtrosExpandidos) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  _buildFiltroDropdownMejorado(
+                    value: _selectedCurso,
+                    items: _cursos,
+                    hint: '🎓 Curso',
+                    icon: Icons.school,
+                    onChanged: (value) => setState(() => _selectedCurso = value!),
+                  ),
+                  
+                  _buildFiltroDropdownMejorado(
+                    value: _selectedPlan,
+                    items: _planes,
+                    hint: '📋 Plan',
+                    icon: Icons.assignment,
+                    onChanged: (value) => setState(() => _selectedPlan = value!),
+                  ),
+                  
+                  _buildFiltroDropdownMejorado(
+                    value: _selectedMetodoPago,
+                    items: _metodosPago,
+                    hint: '💰 Pago',
+                    icon: Icons.payment,
+                    onChanged: (value) => setState(() => _selectedMetodoPago = value!),
+                  ),
+                  
+                  _buildFiltroDropdownMejorado(
+                    value: _selectedEstado,
+                    items: ['Todos', 'Activo', 'Por vencer', 'Vencido'],
+                    hint: '🟢 Estado',
+                    icon: Icons.circle,
+                    onChanged: (value) => setState(() => _selectedEstado = value!),
+                  ),
+                  
+                  // Botón limpiar
+                  Container(
+                    height: 40,
+                    child: OutlinedButton.icon(
+                      onPressed: _limpiarFiltros,
+                      icon: const Icon(Icons.clear_all, size: 16),
+                      label: const Text('Limpiar'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.grey.shade700,
+                        side: BorderSide(color: Colors.grey.shade300),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
         ),
-        IconButton(
-          icon: const Icon(Icons.file_download),
-          onPressed: _exportarAlumnosExcel,
-          tooltip: 'Exportar alumnos a Excel',
+      ),
+    );
+  }
+
+  Widget _buildFiltroDropdownMejorado({
+    required String value,
+    required List<String> items,
+    required String hint,
+    required IconData icon,
+    required Function(String?) onChanged,
+  }) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 140),
+      child: DropdownButtonFormField<String>(
+        value: value,
+        decoration: InputDecoration(
+          filled: true,
+          fillColor: Colors.grey.shade50,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide.none,
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+          prefixIcon: Icon(icon, size: 18, color: Colors.grey.shade600),
+        ),
+        items: items.map((String value) {
+          return DropdownMenuItem<String>(
+            value: value,
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 13),
+              overflow: TextOverflow.ellipsis,
+            ),
+          );
+        }).toList(),
+        onChanged: onChanged,
+        icon: const Icon(Icons.arrow_drop_down, size: 20),
+        isDense: true,
+      ),
+    );
+  }
+
+  Widget _buildIndicadorResultados() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: fs.streamAlumnos(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const SizedBox();
+        
+        final docs = snapshot.data!.docs;
+        final filtrados = docs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return _aplicarFiltros(data);
+        }).toList();
+        
+        final tieneFiltros = _selectedCurso != 'Todos' ||
+            _selectedPlan != 'Todos' ||
+            _selectedMetodoPago != 'Todos' ||
+            _selectedEstado != 'Todos' ||
+            _searchController.text.isNotEmpty;
+
+        if (!tieneFiltros) return const SizedBox();
+
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.blue.shade100),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.filter_alt, size: 14, color: Colors.blue),
+                    const SizedBox(width: 6),
+                    Text(
+                      '$filtrados de ${docs.length} alumnos',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.blue,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: _limpiarFiltros,
+                child: const Text(
+                  'Limpiar filtros',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildListaAlumnos() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: fs.streamAlumnos(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(
+            child: CircularProgressIndicator(),
+          );
+        }
+
+        final docs = snapshot.data!.docs;
+        final alumnosFiltrados = docs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return _aplicarFiltros(data);
+        }).toList();
+
+        if (alumnosFiltrados.isEmpty) {
+          return _buildVistaSinResultadosMejorada();
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          itemCount: alumnosFiltrados.length,
+          itemBuilder: (context, i) {
+            final doc = alumnosFiltrados[i];
+            final data = doc.data() as Map<String, dynamic>;
+            return _buildTarjetaAlumno(doc, data);
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildTarjetaAlumno(DocumentSnapshot doc, Map<String, dynamic> data) {
+    final nombre = data['nombre'] ?? '';
+    final apellido = data['apellido'] ?? '';
+    final curso = data['curso'] ?? '';
+    final tsFin = data['fecha_fin'] as Timestamp?;
+    final fechaFin = tsFin?.toDate() ?? DateTime.now();
+    final estado = data['estado'] ?? FirestoreService.calcularEstado(fechaFin);
+    final celular = data['celular'] ?? '';
+
+    // Color según estado
+    final Color colorEstado;
+    final Color colorTexto;
+    final String textoEstado;
+    
+    switch (estado) {
+      case 'Vencido':
+        colorEstado = Colors.red.shade50;
+        colorTexto = Colors.red.shade800;
+        textoEstado = 'Vencido';
+        break;
+      case 'Por vencer':
+        colorEstado = Colors.orange.shade50;
+        colorTexto = Colors.orange.shade800;
+        textoEstado = 'Por vencer';
+        break;
+      default:
+        colorEstado = Colors.green.shade50;
+        colorTexto = Colors.green.shade800;
+        textoEstado = 'Activo';
+    }
+
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _mostrarMenuOpciones(context, doc.id, data, doc),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              // Avatar y info básica
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade100,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.person, color: Colors.blue.shade700),
+              ),
+              
+              const SizedBox(width: 12),
+              
+              // Información del alumno
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          '$nombre $apellido',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: colorEstado,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: colorTexto.withOpacity(0.3)),
+                          ),
+                          child: Text(
+                            textoEstado,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: colorTexto,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    
+                    const SizedBox(height: 4),
+                    
+                    Text(
+                      '$curso • Vence: ${DateFormat('dd/MM/yyyy').format(fechaFin)}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 4),
+                    
+                    // Perfil físico
+                    _buildPerfilFisicoMejorado(doc.id),
+                    
+                    // Contacto
+                    if (celular.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(Icons.phone, size: 12, color: Colors.grey.shade500),
+                          const SizedBox(width: 4),
+                          Text(
+                            celular,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              
+              // Botón de opciones
+              IconButton(
+                icon: Icon(Icons.more_vert, color: Colors.grey.shade600),
+                onPressed: () => _mostrarMenuOpciones(context, doc.id, data, doc),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPerfilFisicoMejorado(String alumnoId) {
+    final perfilData = _perfilesCache[alumnoId];
+    
+    if (perfilData == null) {
+      return Row(
+        children: [
+          Icon(Icons.fitness_center, size: 12, color: Colors.grey.shade400),
+          const SizedBox(width: 4),
+          Text(
+            'Sin perfil físico',
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.grey.shade500,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      );
+    }
+
+    final peso = perfilData['peso']?.toDouble() ?? 0.0;
+    final altura = perfilData['altura']?.toDouble() ?? 0.0;
+
+    if (peso <= 0 || altura <= 0) {
+      return Row(
+        children: [
+          Icon(Icons.fitness_center, size: 12, color: Colors.orange.shade400),
+          const SizedBox(width: 4),
+          Text(
+            'Perfil incompleto',
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.orange.shade600,
+            ),
+          ),
+        ],
+      );
+    }
+
+    double alturaCm = altura;
+    if (altura < 3) alturaCm = altura * 100;
+    final imc = peso / ((alturaCm / 100) * (alturaCm / 100));
+
+    return Row(
+      children: [
+        Icon(Icons.fitness_center, size: 12, color: Colors.green.shade600),
+        const SizedBox(width: 4),
+        Text(
+          '$peso kg • ${alturaCm.toStringAsFixed(0)} cm • IMC: ${imc.toStringAsFixed(1)}',
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.green.shade700,
+            fontWeight: FontWeight.w500,
+          ),
         ),
       ],
-    ),
-    
-    body: SafeArea(
+    );
+  }
+
+  Widget _buildVistaSinResultadosMejorada() {
+    return Center(
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Sección de filtros
-          _buildFiltros(),
-          
-          // Indicador de filtros activos
-          StreamBuilder<QuerySnapshot>(
-            stream: fs.streamAlumnos(),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) {
-                return const SizedBox();
-              }
-              
-              final docs = snapshot.data!.docs;
-              final filtrados = docs.where((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                return _aplicarFiltros(data);
-              }).toList();
-              
-              return _buildIndicadorFiltros(filtrados.length, docs.length);
-            },
+          Icon(Icons.search_off, size: 80, color: Colors.grey.shade300),
+          const SizedBox(height: 16),
+          Text(
+            'No se encontraron alumnos',
+            style: TextStyle(
+              fontSize: 18,
+              color: Colors.grey.shade500,
+              fontWeight: FontWeight.w500,
+            ),
           ),
-          
           const SizedBox(height: 8),
-          
-          // Lista de alumnos
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: fs.streamAlumnos(),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                final docs = snapshot.data!.docs;
-                
-                // Aplicar filtros
-                final alumnosFiltrados = docs.where((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  return _aplicarFiltros(data);
-                }).toList();
-
-                if (alumnosFiltrados.isEmpty) {
-                  return _buildVistaSinResultados();
-                }
-
-                return ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  itemCount: alumnosFiltrados.length,
-                  itemBuilder: (context, i) {
-                    final doc = alumnosFiltrados[i];
-                    final data = doc.data() as Map<String, dynamic>;
-                    
-                    final nombre = data['nombre'] ?? '';
-                    final curso = data['curso'] ?? '';
-                    final tsFin = data['fecha_fin'] as Timestamp?;
-                    final fechaFin = tsFin?.toDate() ?? DateTime.now();
-                    final estado = data['estado'] ?? FirestoreService.calcularEstado(fechaFin);
-
-                    Color color = estado == 'Vencido'
-                        ? Colors.red[200]!
-                        : estado == 'Por vencer'
-                            ? Colors.yellow[200]!
-                            : Colors.green[200]!;
-
-                    return Card(
-                      color: color,
-                      margin: const EdgeInsets.symmetric(vertical: 6),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        title: Text(
-                          nombre,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 4),
-                            Text(
-                              '$curso • Vence: ${DateFormat('dd/MM/yyyy').format(fechaFin)}',
-                              style: const TextStyle(fontSize: 14),
-                            ),
-                            _buildPerfilFisico(doc.id),
-                          ],
-                        ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.more_vert),
-                          onPressed: () => _mostrarMenuOpciones(context, doc.id, data, doc),
-                        ),
-                        onTap: () => _mostrarMenuOpciones(context, doc.id, data, doc),
-                      ),
-                    );
-                  },
-                );
-              },
+          Text(
+            'Ajusta los filtros o intenta con otros términos de búsqueda',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.shade400,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 20),
+          ElevatedButton.icon(
+            onPressed: _limpiarFiltros,
+            icon: const Icon(Icons.clear_all),
+            label: const Text('Limpiar filtros'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
             ),
           ),
         ],
       ),
-    ),
-  );
-}
-  
+    );
+  }
 }

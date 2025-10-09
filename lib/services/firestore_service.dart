@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart'; // ← AGREGAR este import
 
 class FirestoreService {
   // Colección principal de alumnos
@@ -58,20 +59,30 @@ class FirestoreService {
   }
 
   // 🔹 Guardar un pago
-  Future<void> addPago(Map<String, dynamic> data) async {
+  // 🔹 EN FirestoreService - SOLO ACTUALIZA ESTE MÉTODO:
+Future<void> addPago(Map<String, dynamic> data) async {
+  try {
+    // Si es una inscripción, no tiene vencimiento
+    final esInscripcion = data['tipo'] == 'inscripcion';
+    final fechaPago = DateTime.now();
+    final fechaVencimiento = esInscripcion 
+        ? null 
+        : fechaPago.add(Duration(days: 30)); // 30 días para mensualidades
+
     await FirebaseFirestore.instance.collection('pagos').add({
       ...data,
       'fecha_pago': Timestamp.now(),
+      'fechaVencimiento': fechaVencimiento != null 
+          ? Timestamp.fromDate(fechaVencimiento) 
+          : null,
+      'estado': 'pagado',
+      'fechaRegistro': FieldValue.serverTimestamp(),
     });
+  } catch (e) {
+    print('Error agregando pago: $e');
+    throw e;
   }
-
-  // 🔹 Obtener pagos en tiempo real
-  Stream<QuerySnapshot> streamPagos() {
-    return FirebaseFirestore.instance
-        .collection('pagos')
-        .orderBy('fecha_pago', descending: true)
-        .snapshots();
-  }
+}
 
   // 🔹 Calcular ingresos de un mes
   Future<double> calcularIngresosMesHastaHoy(int anio, int mes) async {
@@ -93,33 +104,16 @@ class FirestoreService {
   }
 
   // 🔹 Calcular ingresos de un mes desde la colección alumnos
-  Future<double> calcularIngresosMesDesdeAlumnos(int anio, int mes) async {
-    final inicioMes = DateTime(anio, mes, 1);
-    final finMes = DateTime(anio, mes + 1, 0, 23, 59, 59);
-
-    final snapshot = await alumnos
-        .where('fecha_inicio', isGreaterThanOrEqualTo: inicioMes)
-        .where('fecha_inicio', isLessThanOrEqualTo: finMes)
-        .get();
-
-    double total = 0;
-    for (var doc in snapshot.docs) {
-      total += (doc['monto_pagado'] as num).toDouble();
-    }
-
-    return total;
-  }
-
-
-// En FirestoreService, agrega este método si quieres usar la colección pagos:
-Future<Map<String, double>> calcularIngresosPorMetodoPago(int anio, int mes) async {
+  Future<Map<String, double>> calcularIngresosPorMetodoPago(int anio, int mes) async {
   try {
     final inicioMes = DateTime(anio, mes, 1);
     final finMes = DateTime(anio, mes + 1, 0, 23, 59, 59);
 
-    final snapshot = await alumnos
-        .where('fecha_inicio', isGreaterThanOrEqualTo: Timestamp.fromDate(inicioMes))
-        .where('fecha_inicio', isLessThanOrEqualTo: Timestamp.fromDate(finMes))
+    // ✅ CORREGIR: Consultar la colección 'pagos'
+    final snapshot = await FirebaseFirestore.instance
+        .collection('pagos')
+        .where('fecha_pago', isGreaterThanOrEqualTo: Timestamp.fromDate(inicioMes))
+        .where('fecha_pago', isLessThanOrEqualTo: Timestamp.fromDate(finMes))
         .get();
 
     double totalEfectivo = 0;
@@ -127,8 +121,8 @@ Future<Map<String, double>> calcularIngresosPorMetodoPago(int anio, int mes) asy
 
     for (var doc in snapshot.docs) {
       final data = doc.data() as Map<String, dynamic>;
-      final monto = (data['monto_pagado'] ?? 0).toDouble();
-      final metodo = (data['metodo_pago'] ?? 'Efectivo').toString();
+      final monto = (data['monto'] ?? 0).toDouble(); // ✅ Campo 'monto' (no 'monto_pagado')
+      final metodo = (data['metodo'] ?? 'Efectivo').toString();
 
       if (metodo.toLowerCase().contains('yape')) {
         totalYape += monto;
@@ -165,4 +159,83 @@ Stream<QuerySnapshot> obtenerEvolucionFisica(String alumnoId) {
       .snapshots();
 }
 
+
+// 🔹 AGREGAR AL FINAL de FirestoreService - MÉTODOS NUEVOS:
+
+// Obtener pagos de un alumno específico
+Future<List<Map<String, dynamic>>> obtenerPagosAlumno(String alumnoId) async {
+  try {
+    final query = await FirebaseFirestore.instance
+        .collection('pagos')
+        .where('alumnoId', isEqualTo: alumnoId)
+        .orderBy('fecha_pago', descending: true)
+        .get();
+
+    return query.docs.map((doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      return {
+        'id': doc.id,
+        ...data,
+      };
+    }).toList();
+  } catch (e) {
+    print('Error obteniendo pagos del alumno: $e');
+    return [];
+  }
+}
+
+// Obtener próximo vencimiento
+Future<Map<String, dynamic>?> obtenerProximoVencimiento(String alumnoId) async {
+  try {
+    final ahora = DateTime.now();
+    
+    final query = await FirebaseFirestore.instance
+        .collection('pagos')
+        .where('alumnoId', isEqualTo: alumnoId)
+        .where('fechaVencimiento', isGreaterThan: Timestamp.fromDate(ahora))
+        .where('tipo', isEqualTo: 'mensualidad') // Solo mensualidades tienen vencimiento
+        .orderBy('fechaVencimiento', descending: false)
+        .limit(1)
+        .get();
+
+    if (query.docs.isNotEmpty) {
+      final data = query.docs.first.data() as Map<String, dynamic>;
+      return {
+        'id': query.docs.first.id,
+        ...data,
+      };
+    }
+    return null;
+  } catch (e) {
+    print('Error obteniendo próximo vencimiento: $e');
+    return null;
+  }
+}
+
+// Calcular días restantes
+static int calcularDiasRestantes(Timestamp? fechaVencimiento) {
+  if (fechaVencimiento == null) return 999; // Sin vencimiento
+  final ahora = DateTime.now();
+  final vencimiento = fechaVencimiento.toDate();
+  return vencimiento.difference(ahora).inDays;
+}
+
+// Obtener estado del pago
+static String obtenerEstadoPago(Timestamp? fechaVencimiento) {
+  if (fechaVencimiento == null) return 'vigente';
+  
+  final diasRestantes = calcularDiasRestantes(fechaVencimiento);
+  
+  if (diasRestantes < 0) return 'vencido';
+  if (diasRestantes <= 2) return 'urgente';
+  if (diasRestantes <= 5) return 'proximo';
+  return 'vigente';
+}
+// En FirestoreService - AGREGA ESTE MÉTODO:
+Stream<QuerySnapshot> streamPagos() {
+  return FirebaseFirestore.instance
+      .collection('pagos')
+      .orderBy('fecha_pago', descending: true)
+      .snapshots();
+}
 }

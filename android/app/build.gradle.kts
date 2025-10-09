@@ -14,12 +14,14 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        // ✅ AGREGAR ESTAS 3 LÍNEAS:
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+        isCoreLibraryDesugaringEnabled = true  // ← Esto es clave
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
+        jvmTarget = "1.8"  // ✅ CAMBIAR de 11 a 1_8
     }
 
     defaultConfig {
@@ -31,6 +33,9 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        
+        // ✅ AGREGAR ESTO EN defaultConfig:
+        multiDexEnabled = true
     }
 
     buildTypes {
@@ -44,4 +49,11 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // ✅ AGREGAR ESTA DEPENDENCIA:
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    
+    // Tus otras dependencias se agregan automáticamente desde Flutter
 }
